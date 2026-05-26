@@ -1,73 +1,118 @@
+
 'use client'
 
 import { useState } from 'react'
+import { useFormData } from '@/hooks/useFormData'
+import { generateDocuments } from '@/services/documentService'
+import type { DepartmentMunicipalityValue } from '@/components/forms/DepartmentMunicipalitySelector'
+import DepartmentMunicipalitySelector from '@/components/forms/DepartmentMunicipalitySelector'
 import {
-  Calendar,
+  Building2,
+  MapPin,
+  Layers3,
+  Check,
   AlertCircle,
-  Loader2,
-  CheckCircle,
 } from 'lucide-react'
 import { MainLayout } from '@/layouts/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
-import { FormCard } from '@/components/forms/FormCard'
-import { ImageDropzone } from '@/components/forms/ImageDropzone'
-import { MunicipioAutocomplete } from '@/components/forms/MunicipioAutocomplete'
-import { useFormData } from '@/hooks/useFormData'
-import { technicalFieldOptions } from '@/data/formSchema'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-export default function GeneratePage() {
-  const {
-    formData,
-    updateField,
-    addImage,
-    removeImage,
-    resetForm,
-    isFormValid,
-    isSubmitting,
-    setIsSubmitting,
-  } = useFormData()
+export default function GenerarPage() {
+  const { formData, updateField, updateDepartmentMunicipality, resetForm, isFormValid, isSubmitting, setIsSubmitting } = useFormData()
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [successMessage, setSuccessMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState<'1' | '2' | '3' | ''>('')
+  const [perforaciones, setPerforaciones] = useState<
+    Array<{ numero: number; profundidad: string; tipo_suelo: string; observaciones: string }>
+  >([
+    { numero: 1, profundidad: '', tipo_suelo: '', observaciones: '' },
+    { numero: 2, profundidad: '', tipo_suelo: '', observaciones: '' },
+    { numero: 3, profundidad: '', tipo_suelo: '', observaciones: '' },
+  ])
 
-  const [showSuccess, setShowSuccess] = useState(false)
+  const categorias = {
+    '1': {
+      titulo: 'Categoría 1: Hasta 3 pisos',
+      carga: '500 kN',
+      minPerforaciones: 3,
+      profundidad: '6 m',
+    },
+    '2': {
+      titulo: 'Categoría 2: Hasta 10 pisos',
+      carga: '4000 kN',
+      minPerforaciones: 4,
+      profundidad: '15 m',
+    },
+    '3': {
+      titulo: 'Categoría 3: Más de 10 pisos',
+      carga: '> 4000 kN',
+      minPerforaciones: 4,
+      profundidad: '25 m',
+    },
+  }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handlePerforacionChange = (index: number, field: string, value: string) => {
+    setPerforaciones((prev) =>
+      prev.map((perf, idx) => {
+        if (idx === index) {
+          return {
+            ...perf,
+            [field]: value,
+          }
+        }
+        return perf
+      })
+    )
+  }
 
-    if (!isFormValid()) {
+  const handleSubmit = async () => {
+    if (!isFormValid() || !selectedCategory) {
+      setErrorMessage('Por favor complete todos los campos requeridos')
       return
     }
 
     setIsSubmitting(true)
+    setErrorMessage('')
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      const perfData = perforaciones
+        .filter((p) => p.profundidad)
+        .map((p) => ({
+          numero: p.numero,
+          profundidad: typeof p.profundidad === 'string' ? parseFloat(p.profundidad) : p.profundidad,
+          tipo_suelo: p.tipo_suelo,
+          observaciones: p.observaciones,
+        }))
 
-      console.log('Form submitted:', formData)
-      setShowSuccess(true)
+      const response = await generateDocuments({
+        nombre_proyecto: formData.nombre_proyecto,
+        municipio: formData.municipio_name,
+        fecha_registro: formData.fecha_inicio,
+        categoria: selectedCategory,
+        campo_n: formData.campo_n,
+        descripcion: formData.descripcion,
+        perforaciones: perfData,
+        imagenes: [],
+      })
 
-      // Reset after showing success
-      setTimeout(() => {
+      if (response.success) {
+        setSuccessMessage(
+          `✅ Documentos generados exitosamente!\nID: ${response.project_id}`
+        )
+        setShowSuccessModal(true)
         resetForm()
-        setShowSuccess(false)
-      }, 3000)
+        setSelectedCategory('')
+      } else {
+        setErrorMessage(`Error: ${response.message}`)
+      }
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Error desconocido al generar documentos'
+      )
     } finally {
       setIsSubmitting(false)
     }
@@ -75,201 +120,243 @@ export default function GeneratePage() {
 
   return (
     <MainLayout>
-      <div className='page-padding container-main'>
-        {/* Page Header */}
-        <div className='mb-8'>
-          <h1 className='text-3xl font-bold text-secondary-900 mb-2'>
-            Generar Automatización
-          </h1>
-          <p className='text-secondary-600'>
-            Completa el formulario para generar documentos geotécnicos
-            automáticamente
-          </p>
+      <div className='page-padding container-main space-y-8'>
+        {/* Header */}
+        <div>
+          <h1 className='text-3xl font-bold text-gray-900 mb-2'>Generar Automatización</h1>
+          <p className='text-gray-600'>Completa el formulario para generar documentos Excel automáticamente</p>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className='space-y-6 max-w-4xl'>
-          {/* Section 1: Información General */}
-          <FormCard
-            title='Información General'
-            description='Detalles básicos del proyecto'
-          >
-            <div className='space-y-6'>
-              <div>
-                <Label htmlFor='nombre_proyecto' className='text-base mb-2'>
-                  Nombre del Proyecto *
-                </Label>
-                <Input
-                  id='nombre_proyecto'
-                  placeholder='Ej: Estudio Geotécnico - Medellín'
-                  value={formData.nombre_proyecto}
-                  onChange={(e) =>
-                    updateField('nombre_proyecto', e.target.value)
-                  }
-                  disabled={isSubmitting}
-                  required
-                />
-              </div>
+        {/* Error Message */}
+        {errorMessage && (
+          <Card className='border-red-200 bg-red-50'>
+            <CardContent className='pt-6 flex gap-3'>
+              <AlertCircle className='h-5 w-5 text-red-600 flex-shrink-0 mt-0.5' />
+              <p className='text-red-700'>{errorMessage}</p>
+            </CardContent>
+          </Card>
+        )}
 
-              <div>
-                <Label htmlFor='municipio' className='text-base mb-2'>
-                  Municipio *
-                </Label>
-                <MunicipioAutocomplete
-                  value={formData.municipio}
-                  onChange={(value) => updateField('municipio', value)}
-                />
-              </div>
-
-              <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
-                <div>
-                  <Label htmlFor='fecha_inicio' className='text-base mb-2'>
-                    Fecha de Inicio *
-                  </Label>
-                  <div className='relative'>
-                    <Calendar className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400 pointer-events-none' />
-                    <Input
-                      id='fecha_inicio'
-                      type='date'
-                      value={formData.fecha_inicio}
-                      onChange={(e) =>
-                        updateField('fecha_inicio', e.target.value)
-                      }
-                      disabled={isSubmitting}
-                      className='pl-10'
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor='fecha_final' className='text-base mb-2'>
-                    Fecha Final (Auto-calculada)
-                  </Label>
-                  <div className='relative'>
-                    <Calendar className='absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary-400 pointer-events-none' />
-                    <Input
-                      id='fecha_final'
-                      type='date'
-                      value={formData.fecha_final}
-                      disabled
-                      className='pl-10 bg-secondary-50'
-                    />
-                  </div>
-                  <p className='text-xs text-secondary-500 mt-1'>
-                    Se calcula automáticamente como 20 días después de la fecha
-                    de inicio
-                  </p>
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor='descripcion' className='text-base mb-2'>
-                  Descripción (Opcional)
-                </Label>
-                <Textarea
-                  id='descripcion'
-                  placeholder='Descripción adicional del proyecto...'
-                  value={formData.descripcion}
-                  onChange={(e) => updateField('descripcion', e.target.value)}
-                  disabled={isSubmitting}
-                  rows={4}
-                />
-              </div>
+        {/* General Info Section */}
+        <Card className='border-gray-200'>
+          <CardHeader className='bg-gray-50 border-b border-gray-200'>
+            <CardTitle className='flex items-center gap-2 text-lg'>
+              <Building2 className='h-5 w-5 text-green-600' />
+              Información General
+            </CardTitle>
+          </CardHeader>
+          <CardContent className='pt-6 space-y-4'>
+            <div>
+              <Label htmlFor='nombre'>Nombre del Proyecto</Label>
+              <Input
+                id='nombre'
+                placeholder='Ej: Estudio Geotécnico Centro Medellín'
+                value={formData.nombre_proyecto}
+                onChange={(e) => updateField('nombre_proyecto', e.target.value)}
+                className='mt-2'
+              />
             </div>
-          </FormCard>
 
-          <Separator />
-
-          {/* Section 2: Información Técnica */}
-          <FormCard
-            title='Información Técnica'
-            description='Especificaciones técnicas del proyecto'
-          >
-            <div className='space-y-4'>
-              <div>
-                <Label htmlFor='campo_n' className='text-base mb-2'>
-                  Tipo de Estudio *
-                </Label>
-                <Select
-                  value={formData.campo_n}
-                  onValueChange={(value) => updateField('campo_n', value)}
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger id='campo_n'>
-                    <SelectValue placeholder='Selecciona un tipo de estudio' />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {technicalFieldOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </FormCard>
-
-          <Separator />
-
-          {/* Section 3: Carga de Imágenes */}
-          <FormCard
-            title='Carga de Imágenes'
-            description='Sube las imágenes o documentos visuales del proyecto'
-          >
-            <ImageDropzone
-              onImagesSelected={(files) => {
-                files.forEach((file) => addImage(file))
+            <DepartmentMunicipalitySelector
+              value={{
+                departamento: formData.departamento,
+                departamento_name: formData.departamento_name,
+                municipio: formData.municipio,
+                municipio_name: formData.municipio_name,
               }}
-              maxFiles={5}
-              maxSizePerFile={10}
+              onChange={(value: DepartmentMunicipalityValue) => updateDepartmentMunicipality(value)}
+              label='Ubicación del Proyecto'
+              placeholder='Selecciona departamento y municipio'
             />
-          </FormCard>
 
-          {/* Form Actions */}
-          <div className='flex justify-end gap-3 pt-6 border-t border-secondary-200'>
-            <Button
-              type='button'
-              variant='outline'
-              onClick={resetForm}
-              disabled={isSubmitting}
-            >
-              Limpiar
-            </Button>
-            <Button
-              type='submit'
-              disabled={!isFormValid() || isSubmitting}
-              className='gap-2'
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className='h-4 w-4 animate-spin' />
-                  Generando...
-                </>
-              ) : (
-                'Generar Documentos'
-              )}
-            </Button>
-          </div>
-        </form>
-      </div>
-
-      {/* Success Dialog */}
-      <Dialog open={showSuccess} onOpenChange={setShowSuccess}>
-        <DialogContent>
-          <DialogHeader>
-            <div className='flex items-center gap-3 mb-2'>
-              <CheckCircle className='h-6 w-6 text-green-600' />
-              <DialogTitle>¡Éxito!</DialogTitle>
+            <div className='grid grid-cols-2 gap-4'>
+              <div>
+                <Label htmlFor='fecha-inicio'>Fecha Registro</Label>
+                <Input
+                  id='fecha-inicio'
+                  type='date'
+                  value={formData.fecha_inicio}
+                  onChange={(e) => updateField('fecha_inicio', e.target.value)}
+                  className='mt-2'
+                />
+              </div>
+              <div>
+                <Label htmlFor='fecha-final'>Fecha Final (auto +20 días)</Label>
+                <Input
+                  id='fecha-final'
+                  type='date'
+                  value={formData.fecha_final}
+                  disabled
+                  className='mt-2 opacity-70'
+                />
+              </div>
             </div>
-            <DialogDescription>
-              Los documentos se han generado correctamente. Pronto podrás
-              descargarlos desde tu historial.
-            </DialogDescription>
-          </DialogHeader>
-        </DialogContent>
-      </Dialog>
+
+            <div>
+              <Label htmlFor='campo-n'>Campo N</Label>
+              <Input
+                id='campo-n'
+                placeholder='Ej: Suelo tipo C'
+                value={formData.campo_n}
+                onChange={(e) => updateField('campo_n', e.target.value)}
+                className='mt-2'
+              />
+            </div>
+
+            <div>
+              <Label htmlFor='descripcion'>Descripción</Label>
+              <textarea
+                id='descripcion'
+                placeholder='Descripción del proyecto'
+                value={formData.descripcion}
+                onChange={(e) => updateField('descripcion', e.target.value)}
+                className='w-full mt-2 px-3 py-2 border border-gray-200 rounded-md'
+                rows={3}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Category Selection */}
+        <Card className='border-gray-200'>
+          <CardHeader className='bg-gray-50 border-b border-gray-200'>
+            <CardTitle className='flex items-center gap-2 text-lg'>
+              <Layers3 className='h-5 w-5 text-green-600' />
+              Categoría del Proyecto
+            </CardTitle>
+          </CardHeader>
+          <CardContent className='pt-6'>
+            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
+              {Object.entries(categorias).map(([key, cat]) => (
+                <button
+                  key={key}
+                  onClick={() => setSelectedCategory(key as '1' | '2' | '3')}
+                  className={`p-4 rounded-lg border-2 transition-all text-left ${
+                    selectedCategory === key
+                      ? 'border-green-600 bg-green-50'
+                      : 'border-gray-200 bg-white hover:border-green-400'
+                  }`}
+                >
+                  <h3 className='font-semibold text-gray-900'>{cat.titulo}</h3>
+                  <p className='text-sm text-gray-600 mt-1'>Carga: {cat.carga}</p>
+                  <div className='flex gap-2 mt-3 text-xs'>
+                    <span className='px-2 py-1 bg-gray-100 rounded'>
+                      {cat.minPerforaciones} perf.
+                    </span>
+                    <span className='px-2 py-1 bg-gray-100 rounded'>{cat.profundidad}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Perforaciones */}
+        <Card className='border-gray-200'>
+          <CardHeader className='bg-gray-50 border-b border-gray-200'>
+            <CardTitle className='flex items-center gap-2 text-lg'>
+              <MapPin className='h-5 w-5 text-green-600' />
+              Perforaciones
+            </CardTitle>
+          </CardHeader>
+          <CardContent className='pt-6'>
+            <div className='overflow-x-auto'>
+              <table className='w-full text-sm'>
+                <thead>
+                  <tr className='border-b border-gray-200'>
+                    <th className='text-left py-2 font-semibold text-gray-700'>Num</th>
+                    <th className='text-left py-2 font-semibold text-gray-700'>Profundidad (m)</th>
+                    <th className='text-left py-2 font-semibold text-gray-700'>Tipo Suelo</th>
+                    <th className='text-left py-2 font-semibold text-gray-700'>Observaciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {perforaciones.map((perf, idx) => (
+                    <tr key={idx} className='border-b border-gray-100 hover:bg-gray-50'>
+                      <td className='py-3'>{perf.numero}</td>
+                      <td className='py-3'>
+                        <Input
+                          type='number'
+                          placeholder='6.0'
+                          value={perf.profundidad}
+                          onChange={(e) => handlePerforacionChange(idx, 'profundidad', e.target.value)}
+                          className='w-24'
+                        />
+                      </td>
+                      <td className='py-3'>
+                        <Input
+                          placeholder='Arena'
+                          value={perf.tipo_suelo}
+                          onChange={(e) => handlePerforacionChange(idx, 'tipo_suelo', e.target.value)}
+                          className='w-32'
+                        />
+                      </td>
+                      <td className='py-3'>
+                        <Input
+                          placeholder='SPT=30'
+                          value={perf.observaciones}
+                          onChange={(e) => handlePerforacionChange(idx, 'observaciones', e.target.value)}
+                          className='w-40'
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Submit Button */}
+        <div className='flex justify-end gap-4'>
+          <Button
+            variant='outline'
+            onClick={() => {
+              resetForm()
+              setSelectedCategory('')
+            }}
+          >
+            Limpiar
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={isSubmitting || !selectedCategory}
+            className='gap-2'
+          >
+            {isSubmitting ? (
+              <>
+                <div className='animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full' />
+                Generando...
+              </>
+            ) : (
+              <>
+                <Check className='h-4 w-4' />
+                Generar Documentos
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Success Modal */}
+        <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
+          <DialogContent className='sm:max-w-md'>
+            <div className='flex flex-col items-center gap-4 py-6'>
+              <div className='w-12 h-12 bg-green-100 rounded-full flex items-center justify-center'>
+                <Check className='h-6 w-6 text-green-600' />
+              </div>
+              <h2 className='text-lg font-semibold text-gray-900'>
+                ¡Documentos Generados!
+              </h2>
+              <p className='text-center text-gray-600 whitespace-pre-line'>{successMessage}</p>
+              <Button onClick={() => setShowSuccessModal(false)} className='w-full'>
+                Cerrar
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
     </MainLayout>
   )
 }
+
+

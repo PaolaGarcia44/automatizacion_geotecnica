@@ -10,8 +10,7 @@ const poppins = Poppins({
 
 export const metadata: Metadata = {
   title: 'AutoGeo - Automatización Documental Geotécnica',
-  description:
-    'Plataforma SaaS para automatización de documentos geotécnicos con inteligencia artificial',
+
   icons: {
     icon: '/favicon.ico',
   },

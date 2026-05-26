@@ -1,7 +1,10 @@
 // Form data structure for the Generate Automatización page
 export interface FormData {
   nombre_proyecto: string
+  departamento: string
+  departamento_name: string
   municipio: string
+  municipio_name: string
   fecha_inicio: string
   fecha_final: string
   descripcion?: string

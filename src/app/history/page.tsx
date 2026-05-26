@@ -5,17 +5,14 @@ import {
   Download,
   Eye,
   FileText,
-  Zap,
   TrendingUp,
   Search,
   Filter,
-  ChevronDown,
 } from 'lucide-react'
 import { MainLayout } from '@/layouts/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Select,
@@ -25,7 +22,6 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { StatCard } from '@/components/history/StatCard'
-import { municipios } from '@/data/municipios'
 
 // Sample data for the table
 const sampleProjects = [
@@ -34,7 +30,6 @@ const sampleProjects = [
     nombre: 'Estudio Geotécnico - Centro',
     municipio: 'Medellín',
     fecha: '2024-05-20',
-    documentos: ['Informe', 'Planos', 'Ensayos'],
     descargas: 12,
     estado: 'Completado',
   },
@@ -43,7 +38,6 @@ const sampleProjects = [
     nombre: 'Análisis de Cimentaciones',
     municipio: 'Envigado',
     fecha: '2024-05-18',
-    documentos: ['Informe', 'Especificaciones'],
     descargas: 8,
     estado: 'Completado',
   },
@@ -52,7 +46,6 @@ const sampleProjects = [
     nombre: 'Estabilidad de Taludes - Occidente',
     municipio: 'Bello',
     fecha: '2024-05-15',
-    documentos: ['Informe', 'Planos', 'Recomendaciones'],
     descargas: 15,
     estado: 'Completado',
   },
@@ -61,7 +54,6 @@ const sampleProjects = [
     nombre: 'Exploración Geotécnica Profunda',
     municipio: 'Rionegro',
     fecha: '2024-05-12',
-    documentos: ['Informe', 'Ensayos', 'Análisis'],
     descargas: 5,
     estado: 'Completado',
   },
@@ -70,7 +62,6 @@ const sampleProjects = [
     nombre: 'Proyecto de Drenaje e Impermeabilización',
     municipio: 'La Ceja',
     fecha: '2024-05-10',
-    documentos: ['Informe', 'Especificaciones', 'Planos'],
     descargas: 10,
     estado: 'Completado',
   },
@@ -79,7 +70,6 @@ const sampleProjects = [
     nombre: 'Geotecnia Ambiental - Sitio A',
     municipio: 'Sabaneta',
     fecha: '2024-05-08',
-    documentos: ['Informe', 'Recomendaciones'],
     descargas: 7,
     estado: 'Completado',
   },
@@ -88,7 +78,6 @@ const sampleProjects = [
     nombre: 'Mecánica de Suelos Avanzada',
     municipio: 'Medellín',
     fecha: '2024-05-05',
-    documentos: ['Informe', 'Ensayos', 'Análisis', 'Planos'],
     descargas: 20,
     estado: 'Completado',
   },
@@ -97,7 +86,6 @@ const sampleProjects = [
     nombre: 'Estudio Preliminar de Factibilidad',
     municipio: 'Copacabana',
     fecha: '2024-05-01',
-    documentos: ['Informe', 'Planos'],
     descargas: 6,
     estado: 'Completado',
   },
@@ -227,8 +215,6 @@ export default function HistoryPage() {
                       <th className='px-6 py-3 text-left'>Proyecto</th>
                       <th className='px-6 py-3 text-left'>Municipio</th>
                       <th className='px-6 py-3 text-left'>Fecha</th>
-                      <th className='px-6 py-3 text-left'>Documentos</th>
-                      <th className='px-6 py-3 text-center'>Descargas</th>
                       <th className='px-6 py-3 text-right'>Acciones</th>
                     </tr>
                   </thead>
@@ -253,25 +239,6 @@ export default function HistoryPage() {
                         </td>
                         <td className='px-6 py-4 text-sm text-secondary-600'>
                           {new Date(project.fecha).toLocaleDateString('es-CO')}
-                        </td>
-                        <td className='px-6 py-4'>
-                          <div className='flex flex-wrap gap-2'>
-                            {project.documentos.map((doc) => (
-                              <Badge
-                                key={doc}
-                                variant='secondary'
-                                className='text-xs'
-                              >
-                                {doc}
-                              </Badge>
-                            ))}
-                          </div>
-                        </td>
-                        <td className='px-6 py-4 text-center'>
-                          <span className='inline-flex items-center gap-1 text-sm font-medium text-primary-600'>
-                            <Download className='h-4 w-4' />
-                            {project.descargas}
-                          </span>
                         </td>
                         <td className='px-6 py-4'>
                           <div className='flex justify-end gap-2'>

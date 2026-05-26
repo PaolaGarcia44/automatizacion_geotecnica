@@ -7,12 +7,8 @@
     --font-sans: 'Poppins', sans-serif;
   }
 
-  * {
-    @apply border-secondary-200;
-  }
-
   body {
-    @apply bg-secondary-50 text-secondary-900;
+    @apply bg-white text-gray-900;
   }
 
   html {
@@ -34,7 +30,7 @@
   }
 
   .glass-dark {
-    @apply bg-secondary-900/50 backdrop-blur-md;
+    @apply bg-gray-900/50 backdrop-blur-md;
   }
 }
 

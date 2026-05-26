@@ -1,13 +1,253 @@
-# 🚀 QUICK START GUIDE
+# 🚀 INICIO RÁPIDO - Frontend + Backend Integrado
 
-## Proyecto Completado: AutoGeo Frontend SaaS
+## ✅ Sistema Completo Listo
 
-### ✅ Status
-**LISTO PARA DESARROLLO** — Servidor corriendo en `http://localhost:3000`
+### Estado Actual
+✅ **Frontend Next.js** - Página generación integrada con backend
+✅ **Backend FastAPI** - API de generación de Excel funcionando
+✅ **Integración** - Frontend conecta con backend en localhost:8000
 
 ---
 
-## 📋 Checklist de Inicio
+## ⚡ Ejecución en 5 minutos
+
+### Terminal 1: Backend (FastAPI)
+
+```bash
+cd backend
+python -m uvicorn main:app --reload
+```
+
+**Esperado:**
+```
+INFO:     Uvicorn running on http://127.0.0.1:8000
+INFO:     Application startup complete
+```
+
+### Terminal 2: Frontend (Next.js)
+
+```bash
+npm.cmd run dev
+```
+
+**Esperado:**
+```
+▲ Next.js 14.2.35
+- Local: http://localhost:3000
+```
+
+---
+
+## ✅ Verificar Funcionamiento
+
+### 1. Abrir Frontend
+```
+http://localhost:3000
+```
+
+Deberías ver:
+- Página "Generar" con formulario
+- Página "Historial" con tabla
+- Página "Chat IA"
+
+### 2. Abrir Backend Docs
+```
+http://localhost:8000/docs
+```
+
+Deberías ver:
+- Swagger UI con 3 endpoints
+- POST /api/generate
+- GET /api/templates/status
+- GET /api/health
+
+### 3. Test Health Check
+```bash
+curl http://localhost:8000/api/health
+```
+
+Respuesta esperada:
+```json
+{
+  "status": "healthy",
+  "service": "AutoGeo Backend",
+  "version": "1.0.0"
+}
+```
+
+---
+
+## 📝 Cómo Usar
+
+### 1. Formulario (http://localhost:3000/generate)
+
+Completa:
+- **Nombre Proyecto** - "Estudio Centro Medellín"
+- **Municipio** - Selecciona de la lista
+- **Fecha Registro** - Selecciona fecha (Final se calcula automáticamente +20 días)
+- **Campo N** - "Suelo tipo C"
+- **Categoría** - Elige 1, 2 o 3
+- **Perforaciones** - Agrega al menos 3
+
+### 2. Generar
+
+Click en "Generar Documentos"
+
+Frontend hará:
+1. Validar datos
+2. Enviar POST a `http://localhost:8000/api/generate`
+3. Mostrar "Generando..."
+4. Recibir respuesta con project_id
+
+### 3. Resultado
+
+Verás modal de éxito:
+```
+✅ ¡Documentos Generados!
+ID: a1b2c3d4
+```
+
+El archivo se guarda en:
+```
+backend/generated/a1b2c3d4_categoria_1.xlsx
+```
+
+---
+
+## 🔍 Verificación de Archivos
+
+### Backend
+
+Verifica que existen las plantillas:
+```bash
+ls backend/templates/excel/
+```
+
+Deberías ver:
+```
+plantilla_categoria_1.xlsx
+plantilla_categoria_2.xlsx
+plantilla_categoria_3.xlsx
+```
+
+### Frontend
+
+Verifica que existe .env.local:
+```bash
+cat .env.local
+```
+
+Deberías ver:
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+---
+
+## 🐛 Si Algo Falla
+
+### Error: Backend no responde
+
+```bash
+# 1. Verifica que está corriendo
+curl http://localhost:8000/api/health
+
+# 2. Si no responde, reinicia
+# En Terminal 1:
+Ctrl+C
+python -m uvicorn main:app --reload
+```
+
+### Error: Frontend muestra error
+
+```bash
+# 1. Verifica que está corriendo
+# Abre http://localhost:3000
+
+# 2. Si falla, reinicia
+# En Terminal 2:
+Ctrl+C
+npm.cmd run dev
+```
+
+### Error: CORS en consola
+
+```bash
+# 1. Verifica que .env.local existe
+cat .env.local
+
+# 2. Si no tiene la URL, añádela:
+echo NEXT_PUBLIC_API_URL=http://localhost:8000 > .env.local
+
+# 3. Reinicia frontend
+```
+
+### Error: Plantillas no encontradas
+
+```bash
+cd backend
+python generate_templates.py
+cd ..
+```
+
+---
+
+## 📚 Documentación Completa
+
+- **Guía Completa**: [INTEGRATION_GUIDE.md](INTEGRATION_GUIDE.md)
+- **Backend Docs**: [backend/README.md](backend/README.md)
+- **Arquitectura**: [backend/ARCHITECTURE.py](backend/ARCHITECTURE.py)
+
+---
+
+## 💾 Estructura de Proyecto
+
+```
+automatizacion_geotecnica/
+├── src/
+│   ├── app/
+│   │   ├── generate/page.tsx    ✨ Formulario integrado
+│   │   ├── history/page.tsx
+│   │   └── ai/page.tsx
+│   ├── services/
+│   │   └── documentService.ts   ✨ Conecta con API
+│   ├── components/...
+│   └── ...
+├── backend/
+│   ├── app/api/documents.py     ✨ Endpoints API
+│   ├── app/services/...
+│   ├── templates/excel/...      ✨ Plantillas
+│   ├── generated/               ✨ Archivos de salida
+│   ├── main.py
+│   └── requirements.txt
+├── .env.local                    ✨ Config Frontend
+├── INTEGRATION_GUIDE.md          ✨ Guía completa
+└── QUICK_START.md               ✨ Este archivo
+```
+
+---
+
+## 🎯 Checklist de Verificación
+
+- [ ] Backend corriendo en puerto 8000
+- [ ] Frontend corriendo en puerto 3000
+- [ ] .env.local con NEXT_PUBLIC_API_URL configurado
+- [ ] Plantillas Excel existen en backend/templates/excel/
+- [ ] Swagger UI accesible en localhost:8000/docs
+- [ ] Formulario accesible en localhost:3000/generate
+- [ ] Health check responde correctamente
+
+---
+
+## ✨ ¡Listo para Usar!
+
+**Sistema Completo:**
+- ✅ Frontend Next.js
+- ✅ Backend FastAPI  
+- ✅ Integración funcionando
+- ✅ Generación de Excel automática
+
+**¡A generar documentos geotécnicos! 🎉**
 
 - [ ] **Leer README.md** — Documentación completa del proyecto
 - [ ] **Explorar las 3 páginas**:
