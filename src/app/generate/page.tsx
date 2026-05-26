@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState } from 'react'
@@ -6,6 +5,7 @@ import { useFormData } from '@/hooks/useFormData'
 import { generateDocuments } from '@/services/documentService'
 import type { DepartmentMunicipalityValue } from '@/components/forms/DepartmentMunicipalitySelector'
 import DepartmentMunicipalitySelector from '@/components/forms/DepartmentMunicipalitySelector'
+import { ImageDropzone } from '@/components/forms/ImageDropzone'
 import {
   Building2,
   MapPin,
@@ -20,19 +20,35 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
+interface PerforacionRow {
+  numero: number
+  profundidad: string
+  tipo_suelo: string
+  observaciones: string
+}
+
+const INITIAL_PERFORACIONES: PerforacionRow[] = [
+  { numero: 1, profundidad: '', tipo_suelo: '', observaciones: '' },
+  { numero: 2, profundidad: '', tipo_suelo: '', observaciones: '' },
+  { numero: 3, profundidad: '', tipo_suelo: '', observaciones: '' },
+]
+
 export default function GenerarPage() {
-  const { formData, updateField, updateDepartmentMunicipality, resetForm, isFormValid, isSubmitting, setIsSubmitting } = useFormData()
+  const {
+    formData,
+    updateField,
+    updateDepartmentMunicipality,
+    resetForm,
+    isFormValid,
+    isSubmitting,
+    setIsSubmitting,
+  } = useFormData()
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<'1' | '2' | '3' | ''>('')
-  const [perforaciones, setPerforaciones] = useState<
-    Array<{ numero: number; profundidad: string; tipo_suelo: string; observaciones: string }>
-  >([
-    { numero: 1, profundidad: '', tipo_suelo: '', observaciones: '' },
-    { numero: 2, profundidad: '', tipo_suelo: '', observaciones: '' },
-    { numero: 3, profundidad: '', tipo_suelo: '', observaciones: '' },
-  ])
+  const [perforaciones, setPerforaciones] = useState<PerforacionRow[]>(INITIAL_PERFORACIONES)
+  const [uploadedImages, setUploadedImages] = useState<File[]>([])
 
   const categorias = {
     '1': {
@@ -55,17 +71,9 @@ export default function GenerarPage() {
     },
   }
 
-  const handlePerforacionChange = (index: number, field: string, value: string) => {
+  const handlePerforacionChange = (index: number, field: keyof PerforacionRow, value: string) => {
     setPerforaciones((prev) =>
-      prev.map((perf, idx) => {
-        if (idx === index) {
-          return {
-            ...perf,
-            [field]: value,
-          }
-        }
-        return perf
-      })
+      prev.map((perf, idx) => (idx === index ? { ...perf, [field]: value } : perf))
     )
   }
 
@@ -96,23 +104,21 @@ export default function GenerarPage() {
         campo_n: formData.campo_n,
         descripcion: formData.descripcion,
         perforaciones: perfData,
-        imagenes: [],
+        imagenes: uploadedImages.map((file) => file.name),
       })
 
       if (response.success) {
-        setSuccessMessage(
-          `✅ Documentos generados exitosamente!\nID: ${response.project_id}`
-        )
+        setSuccessMessage(`✅ Documentos generados exitosamente!\nID: ${response.project_id}`)
         setShowSuccessModal(true)
         resetForm()
         setSelectedCategory('')
+        setUploadedImages([])
+        setPerforaciones(INITIAL_PERFORACIONES)
       } else {
         setErrorMessage(`Error: ${response.message}`)
       }
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error ? error.message : 'Error desconocido al generar documentos'
-      )
+      setErrorMessage(error instanceof Error ? error.message : 'Error desconocido al generar documentos')
     } finally {
       setIsSubmitting(false)
     }
@@ -121,13 +127,11 @@ export default function GenerarPage() {
   return (
     <MainLayout>
       <div className='page-padding container-main space-y-8'>
-        {/* Header */}
         <div>
           <h1 className='text-3xl font-bold text-gray-900 mb-2'>Generar Automatización</h1>
           <p className='text-gray-600'>Completa el formulario para generar documentos Excel automáticamente</p>
         </div>
 
-        {/* Error Message */}
         {errorMessage && (
           <Card className='border-red-200 bg-red-50'>
             <CardContent className='pt-6 flex gap-3'>
@@ -137,7 +141,6 @@ export default function GenerarPage() {
           </Card>
         )}
 
-        {/* General Info Section */}
         <Card className='border-gray-200'>
           <CardHeader className='bg-gray-50 border-b border-gray-200'>
             <CardTitle className='flex items-center gap-2 text-lg'>
@@ -169,9 +172,9 @@ export default function GenerarPage() {
               placeholder='Selecciona departamento y municipio'
             />
 
-            <div className='grid grid-cols-2 gap-4'>
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
               <div>
-                <Label htmlFor='fecha-inicio'>Fecha Registro</Label>
+                <Label htmlFor='fecha-inicio'>Fecha de Registro</Label>
                 <Input
                   id='fecha-inicio'
                   type='date'
@@ -191,33 +194,9 @@ export default function GenerarPage() {
                 />
               </div>
             </div>
-
-            <div>
-              <Label htmlFor='campo-n'>Campo N</Label>
-              <Input
-                id='campo-n'
-                placeholder='Ej: Suelo tipo C'
-                value={formData.campo_n}
-                onChange={(e) => updateField('campo_n', e.target.value)}
-                className='mt-2'
-              />
-            </div>
-
-            <div>
-              <Label htmlFor='descripcion'>Descripción</Label>
-              <textarea
-                id='descripcion'
-                placeholder='Descripción del proyecto'
-                value={formData.descripcion}
-                onChange={(e) => updateField('descripcion', e.target.value)}
-                className='w-full mt-2 px-3 py-2 border border-gray-200 rounded-md'
-                rows={3}
-              />
-            </div>
           </CardContent>
         </Card>
 
-        {/* Category Selection */}
         <Card className='border-gray-200'>
           <CardHeader className='bg-gray-50 border-b border-gray-200'>
             <CardTitle className='flex items-center gap-2 text-lg'>
@@ -251,7 +230,6 @@ export default function GenerarPage() {
           </CardContent>
         </Card>
 
-        {/* Perforaciones */}
         <Card className='border-gray-200'>
           <CardHeader className='bg-gray-50 border-b border-gray-200'>
             <CardTitle className='flex items-center gap-2 text-lg'>
@@ -307,13 +285,30 @@ export default function GenerarPage() {
           </CardContent>
         </Card>
 
-        {/* Submit Button */}
+        <Card className='border-gray-200'>
+          <CardHeader className='bg-gray-50 border-b border-gray-200'>
+            <CardTitle className='flex items-center gap-2 text-lg'>
+              <AlertCircle className='h-5 w-5 text-green-600' />
+              Imágenes del Registro
+            </CardTitle>
+          </CardHeader>
+          <CardContent className='pt-6'>
+            <ImageDropzone
+              onImagesChange={setUploadedImages}
+              maxFiles={50}
+              maxSizePerFile={10}
+            />
+          </CardContent>
+        </Card>
+
         <div className='flex justify-end gap-4'>
           <Button
             variant='outline'
             onClick={() => {
               resetForm()
               setSelectedCategory('')
+              setUploadedImages([])
+              setPerforaciones(INITIAL_PERFORACIONES)
             }}
           >
             Limpiar
@@ -337,7 +332,6 @@ export default function GenerarPage() {
           </Button>
         </div>
 
-        {/* Success Modal */}
         <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
           <DialogContent className='sm:max-w-md'>
             <div className='flex flex-col items-center gap-4 py-6'>
@@ -358,5 +352,3 @@ export default function GenerarPage() {
     </MainLayout>
   )
 }
-
-

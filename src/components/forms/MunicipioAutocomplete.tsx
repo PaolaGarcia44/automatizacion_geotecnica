@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react'
 import { ChevronDown, Search } from 'lucide-react'
-import { municipios } from '@/data/municipios'
+import { searchMunicipalities } from '@/data/colombia'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -22,10 +22,8 @@ export function MunicipioAutocomplete({
   const [searchTerm, setSearchTerm] = useState('')
 
   const filteredMunicipios = useMemo(() => {
-    if (!searchTerm) return municipios
-    return municipios.filter((m) =>
-      m.toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    const results = searchMunicipalities(searchTerm)
+    return results.map((r) => r.name)
   }, [searchTerm])
 
   const handleSelect = useCallback(

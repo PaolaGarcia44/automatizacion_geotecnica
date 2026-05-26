@@ -1,37 +1,69 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
 
-@layer base {
-  :root {
-    --font-sans: 'Poppins', sans-serif;
-  }
+:root {
+  --font-sans: 'Poppins', sans-serif;
+}
 
-  body {
-    @apply bg-white text-gray-900;
-  }
+body {
+  background-color: #ffffff;
+  color: #111827;
+  font-family: var(--font-sans);
+}
 
-  html {
-    scroll-behavior: smooth;
+html {
+  scroll-behavior: smooth;
+}
+
+.container-main {
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 80rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container-main {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
   }
 }
 
-@layer components {
+@media (min-width: 1024px) {
   .container-main {
-    @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
+    padding-left: 2rem;
+    padding-right: 2rem;
   }
+}
 
+.page-padding {
+  padding: 1rem;
+}
+
+@media (min-width: 640px) {
   .page-padding {
-    @apply p-4 sm:p-6 lg:p-8;
+    padding: 1.5rem;
   }
+}
 
-  .glass {
-    @apply bg-white/50 backdrop-blur-md;
+@media (min-width: 1024px) {
+  .page-padding {
+    padding: 2rem;
   }
+}
 
-  .glass-dark {
-    @apply bg-gray-900/50 backdrop-blur-md;
-  }
+.glass {
+  background-color: rgba(255,255,255,0.5);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.glass-dark {
+  background-color: rgba(17,24,39,0.5);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
 }
 
 /* Smooth animations */

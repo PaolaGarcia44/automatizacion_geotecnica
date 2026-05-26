@@ -8,13 +8,15 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 interface ImageDropzoneProps {
-  onImagesSelected: (files: File[]) => void
+  onImagesSelected?: (files: File[]) => void
+  onImagesChange?: (files: File[]) => void
   maxFiles?: number
   maxSizePerFile?: number // in MB
 }
 
 export function ImageDropzone({
   onImagesSelected,
+  onImagesChange,
   maxFiles = 5,
   maxSizePerFile = 10,
 }: ImageDropzoneProps) {
@@ -66,9 +68,10 @@ export function ImageDropzone({
 
       setPreviews(newPreviews)
       setErrors(newErrors)
-      onImagesSelected(validFiles)
+      onImagesSelected?.(validFiles)
+      onImagesChange?.(newPreviews.map((item) => item.file))
     },
-    [onImagesSelected, maxFiles, maxSizePerFile, previews]
+    [onImagesSelected, onImagesChange, maxFiles, maxSizePerFile, previews]
   )
 
   const handleDrop = useCallback(
@@ -104,9 +107,11 @@ export function ImageDropzone({
       if (image) {
         URL.revokeObjectURL(image.preview)
       }
-      return prev.filter((img) => img.id !== id)
+      const next = prev.filter((img) => img.id !== id)
+      onImagesChange?.(next.map((item) => item.file))
+      return next
     })
-  }, [])
+  }, [onImagesChange])
 
   return (
     <div className='space-y-4'>
