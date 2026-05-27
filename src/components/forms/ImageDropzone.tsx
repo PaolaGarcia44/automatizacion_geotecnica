@@ -1,10 +1,8 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { Upload, X, Image as ImageIcon } from 'lucide-react'
-import { Card } from '@/components/ui/card'
+import { Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 interface ImageDropzoneProps {

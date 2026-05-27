@@ -2,11 +2,9 @@
 
 import { usePathname } from 'next/navigation'
 
-interface HeaderProps {
-  sidebarCollapsed?: boolean
-}
+interface HeaderProps {}
 
-export function Header({ sidebarCollapsed = false }: HeaderProps) {
+export function Header(_: HeaderProps) {
   const pathname = usePathname()
 
   const getBreadcrumb = () => {

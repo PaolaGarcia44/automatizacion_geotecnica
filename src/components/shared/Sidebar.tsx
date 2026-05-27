@@ -7,7 +7,6 @@ import {
   Clock,
   Zap,
   Menu,
-  X,
   ChevronLeft,
 } from 'lucide-react'
 import { useSidebar } from '@/hooks/useSidebar'

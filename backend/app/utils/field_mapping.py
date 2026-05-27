@@ -9,7 +9,10 @@ core sheet layout:
 from __future__ import annotations
 
 GENERAL_FIELD_MAPPING = {
-    "proyecto_ubicacion": ["B5"],
+    # Write the project name in C6 (short name). A5 will be used as a static label 'Parámetro:'
+    "proyecto_ubicacion": ["C6"],
+    # Static label on the primary sheet
+    "parametro_label": ["A5"],
     "fecha_registro": ["C7"],
     "sondeo": ["A9"],
     "peso_martinete": ["G7"],

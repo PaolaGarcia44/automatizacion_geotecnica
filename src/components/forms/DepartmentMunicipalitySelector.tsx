@@ -15,14 +15,12 @@ interface DepartmentMunicipalityProps {
   value: DepartmentMunicipalityValue
   onChange: (value: DepartmentMunicipalityValue) => void
   label?: string
-  placeholder?: string
 }
 
 export const DepartmentMunicipalitySelector: React.FC<DepartmentMunicipalityProps> = ({
   value,
   onChange,
   label = 'Ubicación Geográfica',
-  placeholder = 'Selecciona departamento y municipio',
 }) => {
   const [departmentOpen, setDepartmentOpen] = useState(false)
   const [municipalityOpen, setMunicipalityOpen] = useState(false)
@@ -62,7 +60,6 @@ export const DepartmentMunicipalitySelector: React.FC<DepartmentMunicipalityProp
   }
 
   const selectedDept = departments.find((d) => d.id === value.departamento)
-  const selectedMun = municipalities.find((m) => m.id === value.municipio)
 
   return (
     <div className='space-y-4'>

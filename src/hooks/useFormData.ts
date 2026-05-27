@@ -23,7 +23,7 @@ export const useFormData = () => {
   const updateField = useCallback(
     (field: keyof FormData, value: unknown) => {
       setFormData((prev) => {
-        const updated = { ...prev, [field]: value }
+        const updated: FormData = { ...prev, [field]: value } as FormData
 
         // Auto-calculate fecha_final if fecha_inicio changes
         if (field === 'fecha_inicio' && typeof value === 'string') {

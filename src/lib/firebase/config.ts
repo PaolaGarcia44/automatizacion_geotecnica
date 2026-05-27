@@ -1,7 +1,7 @@
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app'
-import type { Auth } from 'firebase/auth'
-import type { Firestore } from 'firebase/firestore'
-import type { FirebaseStorage } from 'firebase/storage'
+import { getAuth, type Auth } from 'firebase/auth'
+import { getFirestore, type Firestore } from 'firebase/firestore'
+import { getStorage, type FirebaseStorage } from 'firebase/storage'
 
 let app: FirebaseApp | undefined
 let auth: Auth | undefined
@@ -66,7 +66,6 @@ export const getFirebaseAuth = (): Auth | null => {
 
   if (auth === undefined) {
     try {
-      const { getAuth } = require('firebase/auth')
       auth = getAuth(firebaseApp)
     } catch (error) {
       console.error('Failed to initialize Firebase Auth:', error)
@@ -82,7 +81,6 @@ export const getFirebaseFirestore = (): Firestore | null => {
 
   if (firestore === undefined) {
     try {
-      const { getFirestore } = require('firebase/firestore')
       firestore = getFirestore(firebaseApp)
     } catch (error) {
       console.error('Failed to initialize Firebase Firestore:', error)
@@ -98,7 +96,6 @@ export const getFirebaseStorage = (): FirebaseStorage | null => {
 
   if (storage === undefined) {
     try {
-      const { getStorage } = require('firebase/storage')
       storage = getStorage(firebaseApp)
     } catch (error) {
       console.error('Failed to initialize Firebase Storage:', error)

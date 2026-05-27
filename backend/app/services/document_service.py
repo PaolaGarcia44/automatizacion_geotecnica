@@ -1,4 +1,4 @@
-"""Document orchestration service for the two Excel templates."""
+"""Document orchestration service for the Excel templates."""
 
 import logging
 from datetime import datetime
@@ -33,33 +33,56 @@ class DocumentService:
 
             # Decide plantilla y perforaciones por defecto según número de pisos
             nPisos = int(pisos or 0)
-            # Default mappings:
-            # <=3 pisos -> plantilla 1, 3 perforaciones de 6 m
-            # 4..10 pisos -> plantilla 2, 4 perforaciones de 15 m
-            # >10 -> plantilla 2, 4 perforaciones de 15 m
-            if not perforaciones_to_use and nPisos <= 3:
-                selected_template = '1'
-                default_perforaciones = [
-                    {"profundidad_z": 6, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                    {"profundidad_z": 6, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                    {"profundidad_z": 6, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                ]
-            elif not perforaciones_to_use:
-                selected_template = '2'
-                default_perforaciones = [
-                    {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                    {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                    {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                    {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                ]
+            if not perforaciones_to_use:
+                if nPisos <= 3:
+                    selected_template = '1'
+                    default_perforaciones = [
+                        {"profundidad_z": 6, "gamma": 15, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 6, "gamma": 16, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 6, "gamma": 17, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                    ]
+                elif nPisos <= 10:
+                    selected_template = '2'
+                    default_perforaciones = [
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                    ]
+                else:
+                    selected_template = '3'
+                    default_perforaciones = [
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                    ]
             else:
-                selected_template = '1' if nPisos <= 3 else '2'
+                # If user provided perforaciones, still choose template according to pisos thresholds
+                if nPisos <= 3:
+                    selected_template = '1'
+                elif nPisos <= 10:
+                    selected_template = '2'
+                else:
+                    selected_template = '3'
                 default_perforaciones = perforaciones_to_use
 
+            # For plantilla 1 and 3, fill gamma values sequentially when they are missing.
+            # This makes the column depend on the number of soil layers/species:
+            # 2 layers -> 15, 16; 3 layers -> 15, 16, 17; and so on.
+            if selected_template in {'1', '3'}:
+                for index, row_data in enumerate(default_perforaciones):
+                    if row_data.get('gamma') in (None, ''):
+                        row_data['gamma'] = 15 + index
+
             # Only write Proyecto and Fecha to the template; leave all other cells unchanged
+            # Force proyecto_ubicacion to uppercase for the copy
+            proyecto_upper = proyecto_ubicacion.upper() if isinstance(proyecto_ubicacion, str) else proyecto_ubicacion
             excel_data = {
-                "proyecto_ubicacion": proyecto_ubicacion,
+                "proyecto_ubicacion": proyecto_upper,
                 "fecha_registro": fecha_registro,
+                # static label required by UI: A5 should read 'Parámetro:'
+                "parametro_label": "Parámetro:",
             }
 
             logger.info("Iniciando generación de documentos para proyecto: %s", proyecto_ubicacion)
@@ -82,7 +105,7 @@ class DocumentService:
                 "download_url": f"/api/download/{excel_file.name}",
                 "timestamp": timestamp,
                 "template_id": selected_template,
-                "proyecto_ubicacion": proyecto_ubicacion,
+                "proyecto_ubicacion": proyecto_upper,
             }
 
         except Exception as e:

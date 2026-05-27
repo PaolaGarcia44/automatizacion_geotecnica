@@ -44,7 +44,7 @@ export default function GenerarPage() {
 
       const payload = {
         // backend decidirá la plantilla según 'pisos' y generará perforaciones por defecto
-        proyecto_ubicacion: proyectoUbicacion,
+        proyecto_ubicacion: proyectoUbicacion.toUpperCase(),
         fecha_registro: fechaRegistro,
         pisos: nPisos,
       }
@@ -98,11 +98,12 @@ export default function GenerarPage() {
               <Label htmlFor='proyecto-ubicacion'>Proyecto + ubicación</Label>
               <Input
                 id='proyecto-ubicacion'
-                placeholder='Ej: Estudio Geotécnico Centro Medellín - Barrio X'
+                placeholder='Ej: Construcción de una casa campestre de 2 niveles ubicada en ...'
                 value={proyectoUbicacion}
                 onChange={(e) => setProyectoUbicacion(e.target.value)}
                 className='mt-2'
               />
+              <p className='mt-2 text-sm text-gray-500'>Se guardará y enviará automáticamente en mayúsculas.</p>
             </div>
 
             <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
@@ -128,9 +129,7 @@ export default function GenerarPage() {
                   className='mt-2'
                 />
               </div>
-              <div className='text-sm text-gray-500 mt-6'>
-                Regla: &lt;5 pisos → plantilla 1; &gt;10 pisos → plantilla 2; 5–10 → plantilla 1 (por defecto)
-              </div>
+              {/* Rule text removed per UX request */}
             </div>
           </CardContent>
         </Card>

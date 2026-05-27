@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     TEMPLATES_CONFIG: dict = {
         "1": "plantilla_1.xlsx",
         "2": "plantilla_2.xlsx",
+        "3": "plantilla_3.xlsx",
     }
     
     class Config:

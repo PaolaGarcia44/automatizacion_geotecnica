@@ -335,8 +335,44 @@ class ExcelService:
 
                 primary_updates[f"{column_letter}{row_number}"] = value
 
-            
+        # If the soil description column is empty, mirror the same-row L cell.
+        for row_number in range(start_row, 17):
+            p_cell = f"P{row_number}"
+            if primary_updates.get(p_cell) in (None, ""):
+                primary_updates[p_cell] = f"=L{row_number}"
 
+        if str(template_id) in {"1", "3"}:
+            # Keep the gamma column aligned with the number of soil species/layers provided.
+            # Any remaining rows in the visible range are cleared so the column shows only
+            # the needed values: 2 species -> 15,16; 3 species -> 15,16,17; etc.
+            used_rows = len(perforaciones or [])
+            for row_number in range(start_row + used_rows, 17):
+                primary_updates[f"B{row_number}"] = None
+
+            
+        # Enforce specific SPT values per plantilla
+        if str(template_id) == "1":
+            spt_values = [7, 8, 15, 19, 23, 26, 29]
+            spt_start = 10
+            for i, v in enumerate(spt_values):
+                primary_updates[f"F{spt_start + i}"] = v
+        elif str(template_id) == "3":
+            # Secuencia completa proporcionada por el usuario para F10:F35 (26 valores)
+            spt_values_3 = [
+                13, 17, 28, 35, 40, 46, 45, 49, 50, 53, 55, 58, 60, 63,
+                65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65,
+            ]
+            spt_start = 10
+            for i, v in enumerate(spt_values_3):
+                primary_updates[f"F{spt_start + i}"] = v
+        elif str(template_id) == "2":
+            # Valores proporcionados por el usuario para plantilla 2 F10:F25
+            spt_values_2 = [
+                15, 20, 22, 29, 35, 38, 42, 45, 48, 51, 54, 57, 59, 62, 65, 68,
+            ]
+            spt_start = 10
+            for i, v in enumerate(spt_values_2):
+                primary_updates[f"F{spt_start + i}"] = v
         if primary_updates:
             primary_sheet = sheet_targets.get(self._normalize("P3"))
             if primary_sheet:
@@ -391,6 +427,34 @@ class ExcelService:
                                 sheet_obj[cell_ref] = value
                         except Exception:
                             continue
+                # Try to attach default template image if present
+                try:
+                    from openpyxl.drawing.image import Image as XLImage
+                    # image located under templates/imagenes/Imagen1.jpg (not under excel/)
+                    from app.core.config import settings as _settings
+                    img_path = _settings.TEMPLATES_DIR / 'imagenes' / 'Imagen1.jpg'
+                    if img_path.exists():
+                        # insert image into primary sheet at a fixed anchor cell (A1)
+                        primary_sheet_name = None
+                        for name in wb_tmp.sheetnames:
+                            if self._normalize(name) == self._normalize('P3'):
+                                primary_sheet_name = name
+                                break
+                        if primary_sheet_name:
+                            sheet_obj = wb_tmp[primary_sheet_name]
+                            # Only add image if sheet has no images to avoid duplicates/overlaps
+                            try:
+                                existing_images = list(getattr(sheet_obj, '_images', []))
+                            except Exception:
+                                existing_images = []
+                            if not existing_images:
+                                img = XLImage(str(img_path))
+                                # Positioning: place top-left corner at cell A1
+                                sheet_obj.add_image(img, 'A1')
+                except Exception:
+                    # non-fatal: ignore image insertion errors
+                    pass
+                # finally save workbook once after updates and optional image insertion
                 wb_tmp.save(work_file)
                 wb_tmp.close()
             except Exception:

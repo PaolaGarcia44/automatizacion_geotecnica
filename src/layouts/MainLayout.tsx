@@ -30,7 +30,7 @@ export function MainLayout({ children }: MainLayoutProps) {
         )}
       >
         {/* Header */}
-        <Header sidebarCollapsed={isCollapsed} />
+        <Header />
 
         {/* Page Content */}
         <main className='flex-1 overflow-auto'>

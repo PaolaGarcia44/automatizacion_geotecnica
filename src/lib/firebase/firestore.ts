@@ -1,6 +1,6 @@
 // Firebase Firestore utilities
 // Prepared for future implementation
-import type { DocumentData, QueryConstraint } from 'firebase/firestore'
+import type { QueryConstraint } from 'firebase/firestore'
 
 export interface Project {
   id: string
