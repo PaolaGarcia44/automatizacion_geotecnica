@@ -373,6 +373,49 @@ class ExcelService:
             spt_start = 10
             for i, v in enumerate(spt_values_2):
                 primary_updates[f"F{spt_start + i}"] = v
+
+        # Convert the numeric SPT values in column F into ranges like "6-7", "7-8",
+        # using the final value that will appear in column F. Apply across the full
+        # target range for each plantilla so the visible SPT block shows ranges.
+        if str(template_id) == "1":
+            f_end = 16
+        elif str(template_id) == "2":
+            f_end = 25
+        elif str(template_id) == "3":
+            f_end = 35
+        else:
+            f_end = start_row + max(0, len(perforaciones or [])) - 1
+
+        # Decide per-copy whether to show the lower or upper value.
+        # Implement alternating behavior across generated files using a toggle file
+        # stored under the generated directory so successive calls flip choice.
+        toggle_file = Path(self.generated_dir) / '.n_campo_toggle'
+        try:
+            if not toggle_file.exists():
+                toggle_file.write_text('0')
+            counter = int(toggle_file.read_text() or '0')
+        except Exception:
+            counter = 0
+
+        # even -> show lower (e.g., 6), odd -> show upper (e.g., 7)
+        use_lower = (counter % 2 == 0)
+
+        # After reading, increment and persist for next generation
+        try:
+            toggle_file.write_text(str(counter + 1))
+        except Exception:
+            pass
+
+        for row_num in range(start_row, f_end + 1):
+            f_cell = f"F{row_num}"
+            raw = primary_updates.get(f_cell)
+            try:
+                v = int(float(raw))
+            except Exception:
+                continue
+            lower = max(0, v - 1)
+            upper = v
+            primary_updates[f_cell] = str(lower) if use_lower else str(upper)
         if primary_updates:
             primary_sheet = sheet_targets.get(self._normalize("P3"))
             if primary_sheet:
