@@ -1,18 +1,8 @@
-'use client'
+"use client"
 
 import { useState } from 'react'
-import { useFormData } from '@/hooks/useFormData'
-import { generateDocuments } from '@/services/documentService'
-import type { DepartmentMunicipalityValue } from '@/components/forms/DepartmentMunicipalitySelector'
-import DepartmentMunicipalitySelector from '@/components/forms/DepartmentMunicipalitySelector'
-import { ImageDropzone } from '@/components/forms/ImageDropzone'
-import {
-  Building2,
-  MapPin,
-  Layers3,
-  Check,
-  AlertCircle,
-} from 'lucide-react'
+import { generateDocuments, buildDownloadUrl, downloadGeneratedFile } from '@/services/documentService'
+import { Building2, Check, AlertCircle, Download } from 'lucide-react'
 import { MainLayout } from '@/layouts/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,100 +10,55 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
-interface PerforacionRow {
-  numero: number
-  profundidad: string
-  tipo_suelo: string
-  observaciones: string
-}
-
-const INITIAL_PERFORACIONES: PerforacionRow[] = [
-  { numero: 1, profundidad: '', tipo_suelo: '', observaciones: '' },
-  { numero: 2, profundidad: '', tipo_suelo: '', observaciones: '' },
-  { numero: 3, profundidad: '', tipo_suelo: '', observaciones: '' },
-]
+// Minimal form: Proyecto, Fecha y Pisos
 
 export default function GenerarPage() {
-  const {
-    formData,
-    updateField,
-    updateDepartmentMunicipality,
-    resetForm,
-    isFormValid,
-    isSubmitting,
-    setIsSubmitting,
-  } = useFormData()
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<'1' | '2' | '3' | ''>('')
-  const [perforaciones, setPerforaciones] = useState<PerforacionRow[]>(INITIAL_PERFORACIONES)
-  const [uploadedImages, setUploadedImages] = useState<File[]>([])
+  const [downloadUrl, setDownloadUrl] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [proyectoUbicacion, setProyectoUbicacion] = useState('')
+  const [fechaRegistro, setFechaRegistro] = useState('')
+  const [pisos, setPisos] = useState<number | ''>('')
 
-  const categorias = {
-    '1': {
-      titulo: 'Categoría 1: Hasta 3 pisos',
-      carga: '500 kN',
-      minPerforaciones: 3,
-      profundidad: '6 m',
-    },
-    '2': {
-      titulo: 'Categoría 2: Hasta 10 pisos',
-      carga: '4000 kN',
-      minPerforaciones: 4,
-      profundidad: '15 m',
-    },
-    '3': {
-      titulo: 'Categoría 3: Más de 10 pisos',
-      carga: '> 4000 kN',
-      minPerforaciones: 4,
-      profundidad: '25 m',
-    },
-  }
-
-  const handlePerforacionChange = (index: number, field: keyof PerforacionRow, value: string) => {
-    setPerforaciones((prev) =>
-      prev.map((perf, idx) => (idx === index ? { ...perf, [field]: value } : perf))
-    )
-  }
+  // helper removed: this minimal form doesn't parse numeric tables
 
   const handleSubmit = async () => {
-    if (!isFormValid() || !selectedCategory) {
-      setErrorMessage('Por favor complete todos los campos requeridos')
+    if (!proyectoUbicacion.trim() || !fechaRegistro) {
+      setErrorMessage('Por favor complete Proyecto y Fecha')
+      return
+    }
+
+    if (pisos === '' || Number(pisos) < 0) {
+      setErrorMessage('Ingrese un número válido de pisos')
       return
     }
 
     setIsSubmitting(true)
     setErrorMessage('')
+    setDownloadUrl('')
 
     try {
-      const perfData = perforaciones
-        .filter((p) => p.profundidad)
-        .map((p) => ({
-          numero: p.numero,
-          profundidad: typeof p.profundidad === 'string' ? parseFloat(p.profundidad) : p.profundidad,
-          tipo_suelo: p.tipo_suelo,
-          observaciones: p.observaciones,
-        }))
+      const nPisos = Number(pisos)
 
-      const response = await generateDocuments({
-        nombre_proyecto: formData.nombre_proyecto,
-        municipio: formData.municipio_name,
-        fecha_registro: formData.fecha_inicio,
-        categoria: selectedCategory,
-        campo_n: formData.campo_n,
-        descripcion: formData.descripcion,
-        perforaciones: perfData,
-        imagenes: uploadedImages.map((file) => file.name),
-      })
+      const payload = {
+        // backend decidirá la plantilla según 'pisos' y generará perforaciones por defecto
+        proyecto_ubicacion: proyectoUbicacion,
+        fecha_registro: fechaRegistro,
+        pisos: nPisos,
+      }
+
+      const response = await generateDocuments(payload)
 
       if (response.success) {
         setSuccessMessage(`✅ Documentos generados exitosamente!\nID: ${response.project_id}`)
+        setDownloadUrl(buildDownloadUrl(response.download_url))
         setShowSuccessModal(true)
-        resetForm()
-        setSelectedCategory('')
-        setUploadedImages([])
-        setPerforaciones(INITIAL_PERFORACIONES)
+
+        if (response.download_url) {
+          await downloadGeneratedFile(response.download_url)
+        }
       } else {
         setErrorMessage(`Error: ${response.message}`)
       }
@@ -128,8 +73,8 @@ export default function GenerarPage() {
     <MainLayout>
       <div className='page-padding container-main space-y-8'>
         <div>
-          <h1 className='text-3xl font-bold text-gray-900 mb-2'>Generar Automatización</h1>
-          <p className='text-gray-600'>Completa el formulario para generar documentos Excel automáticamente</p>
+          <h1 className='text-3xl font-bold text-gray-900 mb-2'>Automatización geotécnica</h1>
+          <p className='text-gray-600'>Completa el formulario y genera una copia editable de la plantilla Excel seleccionada.</p>
         </div>
 
         {errorMessage && (
@@ -145,190 +90,80 @@ export default function GenerarPage() {
           <CardHeader className='bg-gray-50 border-b border-gray-200'>
             <CardTitle className='flex items-center gap-2 text-lg'>
               <Building2 className='h-5 w-5 text-green-600' />
-              Información General
+              Datos mínimos para generación
             </CardTitle>
           </CardHeader>
           <CardContent className='pt-6 space-y-4'>
             <div>
-              <Label htmlFor='nombre'>Nombre del Proyecto</Label>
+              <Label htmlFor='proyecto-ubicacion'>Proyecto + ubicación</Label>
               <Input
-                id='nombre'
-                placeholder='Ej: Estudio Geotécnico Centro Medellín'
-                value={formData.nombre_proyecto}
-                onChange={(e) => updateField('nombre_proyecto', e.target.value)}
+                id='proyecto-ubicacion'
+                placeholder='Ej: Estudio Geotécnico Centro Medellín - Barrio X'
+                value={proyectoUbicacion}
+                onChange={(e) => setProyectoUbicacion(e.target.value)}
                 className='mt-2'
               />
             </div>
 
-            <DepartmentMunicipalitySelector
-              value={{
-                departamento: formData.departamento,
-                departamento_name: formData.departamento_name,
-                municipio: formData.municipio,
-                municipio_name: formData.municipio_name,
-              }}
-              onChange={(value: DepartmentMunicipalityValue) => updateDepartmentMunicipality(value)}
-              label='Ubicación del Proyecto'
-              placeholder='Selecciona departamento y municipio'
-            />
-
-            <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
               <div>
-                <Label htmlFor='fecha-inicio'>Fecha de Registro</Label>
+                <Label htmlFor='fecha-registro'>Fecha</Label>
                 <Input
-                  id='fecha-inicio'
+                  id='fecha-registro'
                   type='date'
-                  value={formData.fecha_inicio}
-                  onChange={(e) => updateField('fecha_inicio', e.target.value)}
+                  value={fechaRegistro}
+                  onChange={(e) => setFechaRegistro(e.target.value)}
                   className='mt-2'
                 />
               </div>
               <div>
-                <Label htmlFor='fecha-final'>Fecha Final (auto +20 días)</Label>
+                <Label htmlFor='pisos'>Pisos (número)</Label>
                 <Input
-                  id='fecha-final'
-                  type='date'
-                  value={formData.fecha_final}
-                  disabled
-                  className='mt-2 opacity-70'
+                  id='pisos'
+                  type='number'
+                  step='1'
+                  min='0'
+                  value={pisos === '' ? '' : String(pisos)}
+                  onChange={(e) => setPisos(e.target.value === '' ? '' : Number(e.target.value))}
+                  className='mt-2'
                 />
+              </div>
+              <div className='text-sm text-gray-500 mt-6'>
+                Regla: &lt;5 pisos → plantilla 1; &gt;10 pisos → plantilla 2; 5–10 → plantilla 1 (por defecto)
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className='border-gray-200'>
-          <CardHeader className='bg-gray-50 border-b border-gray-200'>
-            <CardTitle className='flex items-center gap-2 text-lg'>
-              <Layers3 className='h-5 w-5 text-green-600' />
-              Categoría del Proyecto
-            </CardTitle>
-          </CardHeader>
-          <CardContent className='pt-6'>
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-              {Object.entries(categorias).map(([key, cat]) => (
-                <button
-                  key={key}
-                  onClick={() => setSelectedCategory(key as '1' | '2' | '3')}
-                  className={`p-4 rounded-lg border-2 transition-all text-left ${
-                    selectedCategory === key
-                      ? 'border-green-600 bg-green-50'
-                      : 'border-gray-200 bg-white hover:border-green-400'
-                  }`}
-                >
-                  <h3 className='font-semibold text-gray-900'>{cat.titulo}</h3>
-                  <p className='text-sm text-gray-600 mt-1'>Carga: {cat.carga}</p>
-                  <div className='flex gap-2 mt-3 text-xs'>
-                    <span className='px-2 py-1 bg-gray-100 rounded'>
-                      {cat.minPerforaciones} perf.
-                    </span>
-                    <span className='px-2 py-1 bg-gray-100 rounded'>{cat.profundidad}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className='border-gray-200'>
-          <CardHeader className='bg-gray-50 border-b border-gray-200'>
-            <CardTitle className='flex items-center gap-2 text-lg'>
-              <MapPin className='h-5 w-5 text-green-600' />
-              Perforaciones
-            </CardTitle>
-          </CardHeader>
-          <CardContent className='pt-6'>
-            <div className='overflow-x-auto'>
-              <table className='w-full text-sm'>
-                <thead>
-                  <tr className='border-b border-gray-200'>
-                    <th className='text-left py-2 font-semibold text-gray-700'>Num</th>
-                    <th className='text-left py-2 font-semibold text-gray-700'>Profundidad (m)</th>
-                    <th className='text-left py-2 font-semibold text-gray-700'>Tipo Suelo</th>
-                    <th className='text-left py-2 font-semibold text-gray-700'>Observaciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {perforaciones.map((perf, idx) => (
-                    <tr key={idx} className='border-b border-gray-100 hover:bg-gray-50'>
-                      <td className='py-3'>{perf.numero}</td>
-                      <td className='py-3'>
-                        <Input
-                          type='number'
-                          placeholder='6.0'
-                          value={perf.profundidad}
-                          onChange={(e) => handlePerforacionChange(idx, 'profundidad', e.target.value)}
-                          className='w-24'
-                        />
-                      </td>
-                      <td className='py-3'>
-                        <Input
-                          placeholder='Arena'
-                          value={perf.tipo_suelo}
-                          onChange={(e) => handlePerforacionChange(idx, 'tipo_suelo', e.target.value)}
-                          className='w-32'
-                        />
-                      </td>
-                      <td className='py-3'>
-                        <Input
-                          placeholder='SPT=30'
-                          value={perf.observaciones}
-                          onChange={(e) => handlePerforacionChange(idx, 'observaciones', e.target.value)}
-                          className='w-40'
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className='border-gray-200'>
-          <CardHeader className='bg-gray-50 border-b border-gray-200'>
-            <CardTitle className='flex items-center gap-2 text-lg'>
-              <AlertCircle className='h-5 w-5 text-green-600' />
-              Imágenes del Registro
-            </CardTitle>
-          </CardHeader>
-          <CardContent className='pt-6'>
-            <ImageDropzone
-              onImagesChange={setUploadedImages}
-              maxFiles={50}
-              maxSizePerFile={10}
-            />
-          </CardContent>
-        </Card>
+        {/* Perforaciones y parámetros no se solicitan en esta vista mínima; se preservan sin cambios en la plantilla */}
 
         <div className='flex justify-end gap-4'>
           <Button
             variant='outline'
             onClick={() => {
-              resetForm()
-              setSelectedCategory('')
-              setUploadedImages([])
-              setPerforaciones(INITIAL_PERFORACIONES)
+              setProyectoUbicacion('')
+              setFechaRegistro('')
+              setPisos('')
+              setDownloadUrl('')
+              setErrorMessage('')
+              setSuccessMessage('')
             }}
           >
             Limpiar
           </Button>
+
           <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || !selectedCategory}
-            className='gap-2'
+            disabled={isSubmitting}
+            className='gap-2 bg-blue-600 text-white hover:bg-blue-700'
+            title='Genera el Excel usando las perforaciones automáticas según pisos'
           >
-            {isSubmitting ? (
-              <>
-                <div className='animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full' />
-                Generando...
-              </>
-            ) : (
-              <>
-                <Check className='h-4 w-4' />
-                Generar Documentos
-              </>
-            )}
+            <>
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Generar Excel (automatizado)
+            </>
           </Button>
         </div>
 
@@ -342,6 +177,12 @@ export default function GenerarPage() {
                 ¡Documentos Generados!
               </h2>
               <p className='text-center text-gray-600 whitespace-pre-line'>{successMessage}</p>
+              {downloadUrl && (
+                <Button onClick={() => downloadGeneratedFile(downloadUrl)} className='w-full gap-2'>
+                  <Download className='h-4 w-4' />
+                  Descargar Excel
+                </Button>
+              )}
               <Button onClick={() => setShowSuccessModal(false)} className='w-full'>
                 Cerrar
               </Button>

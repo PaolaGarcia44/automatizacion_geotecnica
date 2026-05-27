@@ -20,17 +20,18 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     
     # CORS
-    ALLOWED_ORIGINS: list = ["http://localhost:3000", "http://localhost:8000"]
+    # WARNING: during development we allow all origins to avoid CORS issues.
+    # Make this more restrictive in production.
+    ALLOWED_ORIGINS: list = ["*"]
     
     # Configuración de archivos
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_EXTENSIONS: list = ["xlsx", "xls", "docx", "pdf", "jpg", "jpeg", "png", "gif"]
     
-    # Rutas de plantillas disponibles
+    # Plantillas Excel disponibles
     TEMPLATES_CONFIG: dict = {
-        "Categoria1": "plantilla_categoria_1.xlsx",
-        "Categoria2": "plantilla_categoria_2.xlsx",
-        "Categoria3": "plantilla_categoria_3.xlsx",
+        "1": "plantilla_1.xlsx",
+        "2": "plantilla_2.xlsx",
     }
     
     class Config:

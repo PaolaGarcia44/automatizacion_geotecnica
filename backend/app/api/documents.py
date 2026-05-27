@@ -1,19 +1,18 @@
-"""
-API Routes - Endpoints principales
-"""
+"""API routes for Excel generation and download."""
 
 import logging
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, status
-from datetime import date
-from typing import List
+from fastapi.responses import FileResponse
 
 from app.models.schemas import (
     DocumentGenerationRequest,
     DocumentGenerationResponse,
-    PerforacionData,
 )
 from app.services.document_service import document_service
 from app.services.template_service import template_service
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,52 +22,56 @@ router = APIRouter(prefix="/api", tags=["documentos"])
 @router.post(
     "/generate",
     response_model=DocumentGenerationResponse,
-    summary="Generar documentos geotécnicos",
-    description="Genera archivos Excel basados en datos del proyecto",
+    summary="Generate geotechnical Excel",
+    description="Generate an Excel file from one of the two templates",
 )
 async def generate_documents(request: DocumentGenerationRequest) -> DocumentGenerationResponse:
-    """
-    Endpoint principal para generar documentos
-    
-    Recibe datos del proyecto y genera archivos Excel modificados
-    basados en plantillas.
-    """
     try:
-        logger.info(f"Solicitud de generación recibida: {request.nombre_proyecto}")
-        
-        # Preparar perforaciones
-        perforaciones = []
-        if request.perforaciones:
-            perforaciones = [
-                {
-                    "numero": p.numero,
-                    "profundidad": p.profundidad,
-                    "tipo_suelo": p.tipo_suelo or "",
-                    "observaciones": p.observaciones or "",
-                }
-                for p in request.perforaciones
-            ]
-        
-        # Llamar servicio de generación
+        logger.info("Solicitud de generación recibida: %s", request.proyecto_ubicacion)
+        # Debug: log full incoming payload (useful to diagnose 422/CORS issues)
+        try:
+            logger.debug("Payload: %s", request.model_dump())
+        except Exception:
+            logger.debug("Payload: (no se pudo serializar el modelo)")
+
+        # Backend decides template and generates default perforaciones based on 'pisos'
+        parametros = [p.model_dump() for p in request.parametros]
+
         result = document_service.generate_documents(
-            nombre_proyecto=request.nombre_proyecto,
-            municipio=request.municipio,
-            fecha_registro=request.fecha_registro.isoformat(),
-            categoria=request.categoria,
-            campo_n=request.campo_n,
-            perforaciones=perforaciones,
-            descripcion=request.descripcion or "",
-            imagenes=request.imagenes,
+            proyecto_ubicacion=request.proyecto_ubicacion,
+            fecha_registro=request.fecha_registro,
+            pisos=request.pisos,
+            perforaciones=[p.model_dump() for p in request.perforaciones],
+            parametros=parametros,
         )
-        
+
         return DocumentGenerationResponse(**result)
-        
+
     except Exception as e:
-        logger.error(f"Error en endpoint /generate: {str(e)}")
+        logger.error("Error en endpoint /generate: %s", str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al generar documentos: {str(e)}",
         )
+
+
+@router.get(
+    "/download/{filename}",
+    summary="Download generated Excel",
+    description="Download a generated Excel file from the server",
+)
+async def download_excel(filename: str):
+    safe_name = Path(filename).name
+    file_path = settings.GENERATED_DIR / safe_name
+
+    if not file_path.exists() or file_path.suffix.lower() != ".xlsx":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo no encontrado")
+
+    return FileResponse(
+        path=str(file_path),
+        filename=safe_name,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @router.get(
@@ -77,9 +80,6 @@ async def generate_documents(request: DocumentGenerationRequest) -> DocumentGene
     description="Verifica qué plantillas están disponibles",
 )
 async def get_templates_status():
-    """
-    Retorna el estado de las plantillas disponibles
-    """
     try:
         return {
             "status": "ok",
@@ -100,9 +100,6 @@ async def get_templates_status():
     description="Verifica que el backend está operativo",
 )
 async def health_check():
-    """
-    Endpoint de salud del servicio
-    """
     return {
         "status": "healthy",
         "service": "AutoGeo Backend",

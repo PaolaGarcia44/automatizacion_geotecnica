@@ -6,21 +6,27 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export interface PerforacionData {
-  numero: number
-  profundidad: number
-  tipo_suelo?: string
-  observaciones?: string
+  profundidad_z: number
+  gamma: number
+  n_campo_spt: number
+  cohesion_c?: number | null
+  descripcion_suelo: string
+}
+
+export interface ParametroRangoData {
+  rango_profundidad: string
+  gamma?: number | null
+  c?: number | null
+  phi?: number | null
+  nu?: number | null
+  e?: number | null
+  unidad_geologica?: string | null
 }
 
 export interface DocumentGenerationRequest {
-  nombre_proyecto: string
-  municipio: string
+  proyecto_ubicacion: string
   fecha_registro: string
-  categoria: string
-  campo_n: string
-  descripcion?: string
-  perforaciones: PerforacionData[]
-  imagenes?: string[]
+  pisos: number
 }
 
 export interface DocumentGenerationResponse {
@@ -112,4 +118,38 @@ export const healthCheck = async (): Promise<{
     console.error('Health check error:', error)
     return { status: 'offline' }
   }
+}
+
+export const buildDownloadUrl = (downloadUrl?: string): string => {
+  if (!downloadUrl) {
+    return ''
+  }
+
+  if (downloadUrl.startsWith('http://') || downloadUrl.startsWith('https://')) {
+    return downloadUrl
+  }
+
+  return `${API_URL}${downloadUrl}`
+}
+
+export const downloadGeneratedFile = async (downloadUrl?: string): Promise<void> => {
+  if (!downloadUrl) {
+    throw new Error('No hay archivo para descargar')
+  }
+
+  const response = await fetch(buildDownloadUrl(downloadUrl))
+
+  if (!response.ok) {
+    throw new Error('No se pudo descargar el archivo generado')
+  }
+
+  const blob = await response.blob()
+  const objectUrl = window.URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.URL.revokeObjectURL(objectUrl)
 }

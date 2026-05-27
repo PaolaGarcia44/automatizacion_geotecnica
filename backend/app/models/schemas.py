@@ -1,41 +1,75 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional
 from datetime import date
+from typing import List, Optional, Union
+
+from pydantic import BaseModel, Field
 
 
 class PerforacionData(BaseModel):
-    """Datos de perforación individual"""
-    numero: int = Field(..., description="Número de perforación")
-    profundidad: float = Field(..., description="Profundidad en metros")
-    tipo_suelo: Optional[str] = None
-    observaciones: Optional[str] = None
+    """Datos de una fila de sondeo/perforación."""
+
+    profundidad_z: float = Field(..., description="Profundidad Z en metros")
+    gamma: float = Field(..., description="Peso específico gamma en kN/m³")
+    n_campo_spt: int = Field(..., description="N de campo SPT")
+    cohesion_c: Optional[float] = Field(None, description="Cohesión C' en kPa")
+    descripcion_suelo: str = Field(..., description="Descripción del suelo")
+
+
+class ParametroRangoData(BaseModel):
+    """Fila opcional de parámetros por rango de profundidad."""
+
+    rango_profundidad: str = Field(..., description="Ejemplo: 0.00 - 1.00")
+    gamma: Optional[float] = None
+    c: Optional[float] = None
+    phi: Optional[float] = None
+    nu: Optional[float] = None
+    e: Optional[float] = None
+    unidad_geologica: Optional[str] = None
 
 
 class DocumentGenerationRequest(BaseModel):
-    """Solicitud para generar documentos geotécnicos"""
-    nombre_proyecto: str = Field(..., min_length=3, description="Nombre del proyecto")
-    municipio: str = Field(..., min_length=2, description="Municipio donde se realizará el proyecto")
-    fecha_registro: date = Field(..., description="Fecha de registro del proyecto")
-    categoria: str = Field(..., description="Categoría del proyecto (1, 2 o 3)")
-    campo_n: str = Field(..., description="Campo N del proyecto")
-    descripcion: Optional[str] = None
+    """Solicitud para generar documentos geotécnicos."""
+
+    template_id: Optional[str] = Field(None, description="Plantilla a usar: 1 o 2 (opcional, backend puede decidir)")
+    proyecto_ubicacion: str = Field(..., min_length=3, description="Proyecto + ubicación")
+    fecha_registro: date = Field(..., description="Fecha del registro")
+    pisos: int = Field(..., description="Número de pisos del proyecto")
+    sondeo: Optional[str] = Field('P-1', description="Nombre del sondeo, ej. P-1")
+    peso_martinete: Optional[float] = Field(63.5, description="Peso del martinete")
+    altura_caida: Optional[float] = Field(0.76, description="Altura de caída")
+    nivel_freatico: Optional[Union[str, float]] = Field("N.A.", description="Nivel freático o N.A.")
     perforaciones: List[PerforacionData] = Field(default_factory=list)
-    imagenes: Optional[List[str]] = Field(default_factory=list, description="URLs o rutas de imágenes")
+    parametros: List[ParametroRangoData] = Field(default_factory=list)
 
     model_config = {
         "json_schema_extra": {
             "example": {
-                "nombre_proyecto": "Estudio Geotécnico Centro Medellín",
-                "municipio": "Medellín",
+                "template_id": "1",
+                "proyecto_ubicacion": "Proyecto Centro Medellín - Zona Norte",
                 "fecha_registro": "2024-05-25",
-                "categoria": "1",
-                "campo_n": "Suelo tipo C",
-                "descripcion": "Análisis preliminar de suelos",
+                "sondeo": "P-1",
+                "peso_martinete": 63.5,
+                "altura_caida": 0.76,
+                "nivel_freatico": "N.A.",
                 "perforaciones": [
-                    {"numero": 1, "profundidad": 6.0, "tipo_suelo": "Arena"},
-                    {"numero": 2, "profundidad": 8.5, "tipo_suelo": "Arcilla"},
+                    {
+                        "profundidad_z": 0.0,
+                        "gamma": 18.2,
+                        "n_campo_spt": 12,
+                        "cohesion_c": 5.0,
+                        "descripcion_suelo": "Arena limosa",
+                    }
                 ],
-                "imagenes": [],
+                "parametros": [
+                    {
+                        "rango_profundidad": "0.00 - 1.00",
+                        "gamma": 18.2,
+                        "c": 5.0,
+                        "phi": 28.0,
+                        "nu": 0.30,
+                        "e": 12000,
+                        "unidad_geologica": "Relleno granular",
+                    }
+                ],
             }
         }
     }

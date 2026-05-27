@@ -1,169 +1,100 @@
-"""
-Servicio de Documentos - Orquestación central de generación
-"""
+"""Document orchestration service for the two Excel templates."""
 
 import logging
 from datetime import datetime
 from uuid import uuid4
-from pathlib import Path
-from typing import List, Dict
+from typing import Dict, List, Optional
 
 from app.services.excel_service import excel_service
-from app.utils.field_mapping import get_field_mapping
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 
 class DocumentService:
-    """Servicio central para generación de documentos geotécnicos"""
+    """Central service for generating geotechnical Excel files."""
     
     def __init__(self):
         self.excel_service = excel_service
-        self.generated_dir = settings.GENERATED_DIR
-    
-    def validate_categoria(self, categoria: str) -> bool:
-        """Valida que la categoría sea válida (1, 2 o 3)"""
-        return categoria in ["1", "2", "3"]
-    
-    def validate_category_requirements(
-        self,
-        categoria: str,
-        num_perforaciones: int,
-        descripcion_proyecto: str,
-    ) -> Dict[str, bool]:
-        """
-        Valida que el proyecto cumpla con los requisitos de su categoría
-        
-        Categoría 1: Hasta 3 pisos, 500 kN, mínimo 3 perforaciones, profundidad 6m
-        Categoría 2: Hasta 10 pisos, 4000 kN, 4 perforaciones, profundidad 15m
-        Categoría 3: Más de 10 pisos, >4000 kN, 4 perforaciones, profundidad 25m
-        """
-        requirements = {
-            "valid": True,
-            "categoria": categoria,
-            "perforaciones_ok": False,
-            "messages": [],
-        }
-        
-        categoria_rules = {
-            "1": {
-                "min_perforaciones": 3,
-                "description": "Categoría 1 (hasta 3 pisos): mínimo 3 perforaciones",
-            },
-            "2": {
-                "min_perforaciones": 4,
-                "description": "Categoría 2 (hasta 10 pisos): mínimo 4 perforaciones",
-            },
-            "3": {
-                "min_perforaciones": 4,
-                "description": "Categoría 3 (más de 10 pisos): mínimo 4 perforaciones",
-            },
-        }
-        
-        if categoria in categoria_rules:
-            rule = categoria_rules[categoria]
-            if num_perforaciones >= rule["min_perforaciones"]:
-                requirements["perforaciones_ok"] = True
-            else:
-                requirements["valid"] = False
-                requirements["messages"].append(
-                    f"Perforaciones insuficientes. {rule['description']}, se tienen {num_perforaciones}."
-                )
-        
-        return requirements
     
     def generate_documents(
         self,
-        nombre_proyecto: str,
-        municipio: str,
-        fecha_registro: str,
-        categoria: str,
-        campo_n: str,
-        perforaciones: List[Dict],
-        descripcion: str = "",
-        imagenes: List[str] = None,
+        proyecto_ubicacion: str,
+        fecha_registro,
+        pisos: int,
+        perforaciones: Optional[List[Dict]] = None,
+        parametros: Optional[List[Dict]] = None,
     ) -> Dict:
-        """
-        Genera documentos Excel para un proyecto geotécnico
-        
-        Proceso:
-        1. Validar entrada
-        2. Generar ID de proyecto
-        3. Crear datos de mapeo
-        4. Generar Excel
-        5. Retornar información de descarga
-        """
+        """Generate the Excel file from the selected template."""        
         try:
             project_id = str(uuid4())[:8]
             timestamp = datetime.now().isoformat()
-            
-            # Validar categoría
-            if not self.validate_categoria(categoria):
-                return {
-                    "success": False,
-                    "message": f"Categoría inválida: {categoria}. Debe ser 1, 2 o 3.",
-                    "project_id": None,
-                }
-            
-            # Validar requisitos de categoría
-            validation = self.validate_category_requirements(
-                categoria=categoria,
-                num_perforaciones=len(perforaciones) if perforaciones else 0,
-                descripcion_proyecto=descripcion,
-            )
-            
-            if not validation["valid"]:
-                return {
-                    "success": False,
-                    "message": "; ".join(validation["messages"]),
-                    "project_id": project_id,
-                }
-            
-            # Preparar datos para Excel
+
+            perforaciones_to_use = perforaciones or []
+
+            # Decide plantilla y perforaciones por defecto según número de pisos
+            nPisos = int(pisos or 0)
+            # Default mappings:
+            # <=3 pisos -> plantilla 1, 3 perforaciones de 6 m
+            # 4..10 pisos -> plantilla 2, 4 perforaciones de 15 m
+            # >10 -> plantilla 2, 4 perforaciones de 15 m
+            if not perforaciones_to_use and nPisos <= 3:
+                selected_template = '1'
+                default_perforaciones = [
+                    {"profundidad_z": 6, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                    {"profundidad_z": 6, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                    {"profundidad_z": 6, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                ]
+            elif not perforaciones_to_use:
+                selected_template = '2'
+                default_perforaciones = [
+                    {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                    {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                    {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                    {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                ]
+            else:
+                selected_template = '1' if nPisos <= 3 else '2'
+                default_perforaciones = perforaciones_to_use
+
+            # Only write Proyecto and Fecha to the template; leave all other cells unchanged
             excel_data = {
-                "nombre_proyecto": nombre_proyecto,
-                "municipio": municipio,
+                "proyecto_ubicacion": proyecto_ubicacion,
                 "fecha_registro": fecha_registro,
-                "categoria": categoria,
-                "campo_n": campo_n,
-                "descripcion": descripcion,
-                "total_perforaciones": len(perforaciones) if perforaciones else 0,
             }
-            
-            # Generar archivo Excel
-            logger.info(f"Iniciando generación de documentos para proyecto: {nombre_proyecto}")
-            
+
+            logger.info("Iniciando generación de documentos para proyecto: %s", proyecto_ubicacion)
+
             excel_file = self.excel_service.generate_excel(
-                categoria=categoria,
+                template_id=selected_template,
                 project_id=project_id,
                 data=excel_data,
-                perforaciones=perforaciones or [],
+                perforaciones=default_perforaciones,
+                parametros=parametros or [],
             )
-            
-            logger.info(f"Documentos generados exitosamente. Proyecto ID: {project_id}")
-            
-            # Preparar respuesta
+
+            logger.info("Documentos generados exitosamente. Proyecto ID: %s", project_id)
+
             return {
                 "success": True,
                 "message": "Documentos generados exitosamente",
                 "project_id": project_id,
                 "files": [str(excel_file)],
+                "download_url": f"/api/download/{excel_file.name}",
                 "timestamp": timestamp,
-                "categoria": categoria,
-                "nombre_proyecto": nombre_proyecto,
+                "template_id": selected_template,
+                "proyecto_ubicacion": proyecto_ubicacion,
             }
-            
+
         except Exception as e:
-            logger.error(f"Error al generar documentos: {str(e)}")
+            logger.error("Error al generar documentos: %s", str(e))
             return {
                 "success": False,
                 "message": f"Error al generar documentos: {str(e)}",
                 "project_id": None,
             }
-    
+
     def get_available_templates_status(self) -> Dict:
-        """Obtiene el estado de las plantillas disponibles"""
+        """Get the status of the configured templates."""
         return self.excel_service.verify_templates()
 
 
