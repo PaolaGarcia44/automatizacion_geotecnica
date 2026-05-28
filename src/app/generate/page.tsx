@@ -94,6 +94,7 @@ export default function GenerarPage() {
   const [downloadUrl, setDownloadUrl] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [proyectoUbicacion, setProyectoUbicacion] = useState('')
+  const [cliente, setCliente] = useState('')
   const [fechaRegistro, setFechaRegistro] = useState('')
   const [pisos, setPisos] = useState<number | ''>('')
   const [soilLayers, setSoilLayers] = useState<SoilLayerForm[]>(DEFAULT_SOIL_LAYERS)
@@ -152,6 +153,7 @@ export default function GenerarPage() {
       const payload = {
         // backend decidirá la plantilla según 'pisos' y generará perforaciones por defecto
         proyecto_ubicacion: proyectoUbicacion.toUpperCase(),
+        cliente: cliente.trim(),
         fecha_registro: fechaRegistro,
         pisos: nPisos,
         template_ids: nPisos <= 3 ? ['4', '5', '6'] : ['4', '5', '6', '7'],
@@ -219,6 +221,17 @@ export default function GenerarPage() {
                   className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm'
                 />
                 <p className='text-sm text-gray-500'>Se guardará y enviará automáticamente en mayúsculas.</p>
+              </div>
+
+              <div className='space-y-2'>
+                <Label htmlFor='cliente'>Cliente</Label>
+                <Input
+                  id='cliente'
+                  placeholder='Ej: Constructora ABC S.A.S.'
+                  value={cliente}
+                  onChange={(e) => setCliente(e.target.value)}
+                  className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm'
+                />
               </div>
 
               <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>

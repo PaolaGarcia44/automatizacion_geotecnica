@@ -33,6 +33,7 @@ class DocumentGenerationRequest(BaseModel):
 
     template_id: Optional[str] = Field(None, description="Plantilla a usar: 1 o 2 (opcional, backend puede decidir)")
     proyecto_ubicacion: str = Field(..., min_length=3, description="Proyecto + ubicación")
+    cliente: Optional[str] = Field(None, description="Cliente del proyecto")
     fecha_registro: date = Field(..., description="Fecha del registro")
     pisos: int = Field(..., description="Número de pisos del proyecto")
     sondeo: Optional[str] = Field('P-1', description="Nombre del sondeo, ej. P-1")

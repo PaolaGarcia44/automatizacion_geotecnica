@@ -4,6 +4,8 @@ import logging
 from datetime import datetime
 from uuid import uuid4
 from typing import Dict, List, Optional
+import re
+import unicodedata
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -18,10 +20,16 @@ class DocumentService:
     
     def __init__(self):
         self.excel_service = excel_service
+
+    def _slugify_filename(self, value: str, fallback: str) -> str:
+        text = unicodedata.normalize("NFD", value or "").encode("ascii", "ignore").decode("ascii")
+        text = re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_")
+        return text or fallback
     
     def generate_documents(
         self,
         proyecto_ubicacion: str,
+        cliente: Optional[str],
         fecha_registro,
         pisos: int,
         perforaciones: Optional[List[Dict]] = None,
@@ -124,6 +132,8 @@ class DocumentService:
             excel_data = {
                 "proyecto_ubicacion": proyecto_upper,
                 "fecha_registro": fecha_c7 if fecha_c7 is not None else fecha_registro,
+                "fecha_registro_original": fecha_obj if fecha_obj is not None else fecha_registro,
+                "cliente": cliente,
                 # static label required by UI: A5 should read 'Parámetro:'
                 "parametro_label": "Parámetro:",
             }
@@ -135,8 +145,13 @@ class DocumentService:
                 laboratorio_template_ids = ['4', '5', '6'] if nPisos <= 3 else ['4', '5', '6', '7']
                 batch_templates = [base_template_id, *laboratorio_template_ids]
 
+                client_slug = self._slugify_filename(str(cliente or '').strip(), 'cliente')
+                project_slug = self._slugify_filename(proyecto_upper, 'proyecto')
+                zip_base_name = f"{client_slug} - {project_slug}.zip"
+                zip_path = self.excel_service.generated_dir / zip_base_name
+
                 output_files = []
-                with ZipFile(self.excel_service.generated_dir / f"{project_id}_paquete.xlsx.zip", 'w', compression=ZIP_DEFLATED) as zip_file:
+                with ZipFile(zip_path, 'w', compression=ZIP_DEFLATED) as zip_file:
                     for current_template in batch_templates:
                         generated_file = self.excel_service.generate_excel(
                             template_id=current_template,
@@ -167,8 +182,6 @@ class DocumentService:
                             )
 
                         zip_file.write(generated_file, arcname=archive_name)
-
-                zip_path = self.excel_service.generated_dir / f"{project_id}_paquete.xlsx.zip"
 
                 return {
                     "success": True,

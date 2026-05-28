@@ -27,6 +27,7 @@ export interface ParametroRangoData {
 
 export interface DocumentGenerationRequest {
   proyecto_ubicacion: string
+  cliente?: string
   fecha_registro: string
   pisos: number
   perforaciones?: PerforacionData[]

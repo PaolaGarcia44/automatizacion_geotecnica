@@ -14,7 +14,7 @@ from tempfile import NamedTemporaryFile
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from openpyxl.utils.cell import column_index_from_string
+from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
 from openpyxl.styles import Alignment, Font, PatternFill
  
 import openpyxl
@@ -70,8 +70,10 @@ class ExcelService:
 
         cell = worksheet[cell_ref]
         if cell.__class__.__name__ == "MergedCell":
+            column_letter, row_number = coordinate_from_string(cell_ref)
+            column_number = column_index_from_string(column_letter)
             for merged_range in worksheet.merged_cells.ranges:
-                if cell_ref in merged_range:
+                if merged_range.min_row <= row_number <= merged_range.max_row and merged_range.min_col <= column_number <= merged_range.max_col:
                     worksheet[merged_range.start_cell.coordinate] = value
                     return
 
@@ -456,7 +458,7 @@ class ExcelService:
     ) -> Path:
         work_file = self._copy_template(template_id, project_id)
 
-        laboratorio_template_ids = {'4', '5', '6'}
+        laboratorio_template_ids = {'4', '5', '6', '7'}
         if str(template_id) in laboratorio_template_ids:
             try:
                 wb_tmp = load_workbook(work_file)
@@ -469,9 +471,13 @@ class ExcelService:
                     target_sheet = wb_tmp[wb_tmp.sheetnames[0]]
 
                 project_value = data.get('proyecto_ubicacion')
-                fecha_value = data.get('fecha_registro')
+                cliente_value = data.get('cliente')
+                fecha_original_value = data.get('fecha_registro_original', data.get('fecha_registro'))
+                fecha_plus_20_value = data.get('fecha_registro')
                 self._set_cell_value(target_sheet, 'H2', project_value)
-                self._set_cell_value(target_sheet, 'L2', fecha_value)
+                self._set_cell_value(target_sheet, 'Q4', fecha_original_value)
+                self._set_cell_value(target_sheet, 'L2', fecha_plus_20_value)
+                self._set_cell_value(target_sheet, 'E5', cliente_value)
 
                 random_values = random.sample(range(10, 100), 3)
                 for cell_ref, value in zip(('K13', 'L13', 'M13'), random_values):

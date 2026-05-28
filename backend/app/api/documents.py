@@ -41,6 +41,7 @@ async def generate_documents(request: DocumentGenerationRequest) -> DocumentGene
             template_id=request.template_id,
             template_ids=request.template_ids,
             proyecto_ubicacion=request.proyecto_ubicacion,
+            cliente=request.cliente,
             fecha_registro=request.fecha_registro,
             pisos=request.pisos,
             perforaciones=[p.model_dump() for p in request.perforaciones],
