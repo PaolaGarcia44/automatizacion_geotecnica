@@ -7,6 +7,7 @@ import random
 import shutil
 import unicodedata
 from datetime import date
+from copy import copy
 from pathlib import Path
 from typing import List, Optional
 from tempfile import NamedTemporaryFile
@@ -14,6 +15,7 @@ from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from openpyxl.utils.cell import column_index_from_string
+from openpyxl.styles import Alignment, Font, PatternFill
  
 import openpyxl
 from openpyxl import load_workbook
@@ -115,6 +117,160 @@ class ExcelService:
             else:
                 letters += character
         return int(digits or 0), column_index_from_string(letters or "A")
+
+    def _soil_style_from_color(self, color_name: Optional[str]):
+        color_map = {
+            "verde": "92D050",
+            "verde claro": "C6E0B4",
+            "beige": "F5F0D7",
+            "café": "8B5A2B",
+            "cafe": "8B5A2B",
+            "amarillo": "FFD966",
+            "rojizo": "C0504D",
+            "blanco": "FFFFFF",
+            "gris claro": "D9D9D9",
+            "naranja": "F4B183",
+        }
+        normalized = self._normalize(color_name or "")
+        fill_hex = color_map.get(normalized, "F4B183")
+
+        def is_dark(hex_color: str) -> bool:
+            red = int(hex_color[0:2], 16)
+            green = int(hex_color[2:4], 16)
+            blue = int(hex_color[4:6], 16)
+            return (red * 299 + green * 587 + blue * 114) / 1000 < 140
+
+        font_color = "FFFFFF" if is_dark(fill_hex) else "1F2937"
+        return PatternFill(fill_type="solid", fgColor=fill_hex), font_color
+
+    def _parse_depth_value(self, value) -> Optional[float]:
+        try:
+            if value in (None, ""):
+                return None
+            parsed = float(str(value).replace(",", ".").strip())
+            return parsed if parsed > 0 else None
+        except Exception:
+            return None
+
+    def _clean_soil_text(self, value: Optional[str], color_name: Optional[str] = None) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+
+        normalized = self._normalize(text)
+        for separator in (" de color ", " color "):
+            token = separator.strip()
+            index = normalized.find(token)
+            if index != -1:
+                text = text[:index].strip()
+                normalized = self._normalize(text)
+
+        if color_name:
+            normalized_color = self._normalize(color_name)
+            if normalized_color:
+                index = normalized.find(f" color {normalized_color}")
+                if index != -1:
+                    text = text[:index].strip()
+
+        text = text.replace("de color", "").replace(" color ", " ")
+        return " ".join(text.split())
+
+    def _build_soil_segments(self, worksheet, layers: List[dict], start_row: int, end_row: int) -> List[tuple]:
+        valid_layers = [layer for layer in layers if any((layer.get(key) for key in ("descripcion_suelo", "tipo_suelo_principal", "color_predominante")))]
+        if not valid_layers:
+            return []
+
+        depth_rows: List[tuple[int, float]] = []
+        for row_number in range(start_row, end_row + 1):
+            marker = self._parse_depth_value(worksheet[f"A{row_number}"].value)
+            if marker is not None:
+                depth_rows.append((row_number, marker))
+
+        if not depth_rows:
+            visible_rows = max(1, end_row - start_row + 1)
+            depths: List[float] = []
+            for index, layer in enumerate(valid_layers):
+                raw_depth = layer.get("profundidad_z")
+                try:
+                    depth = float(raw_depth)
+                except Exception:
+                    depth = float(index + 1)
+                if depth <= 0:
+                    depth = float(index + 1)
+                depths.append(depth)
+
+            if any(depths[index] <= depths[index - 1] for index in range(1, len(depths))):
+                depths = [float(index + 1) for index in range(len(valid_layers))]
+
+            total_depth = depths[-1] if depths[-1] > 0 else float(len(valid_layers))
+            if total_depth <= 0:
+                total_depth = float(len(valid_layers))
+
+            raw_spans: List[int] = []
+            previous_depth = 0.0
+            for index, depth in enumerate(depths):
+                delta = max(0.0, depth - previous_depth)
+                if index == len(depths) - 1 and delta <= 0:
+                    delta = total_depth - previous_depth
+                span_rows = int(round((delta / total_depth) * visible_rows)) if total_depth else 1
+                raw_spans.append(max(1, span_rows))
+                previous_depth = depth
+
+            difference = visible_rows - sum(raw_spans)
+            if raw_spans:
+                raw_spans[-1] = max(1, raw_spans[-1] + difference)
+                while sum(raw_spans) > visible_rows and raw_spans[-1] > 1:
+                    raw_spans[-1] -= 1
+
+            segments = []
+            current_row = start_row
+            for index, span_rows in enumerate(raw_spans):
+                row_end = min(end_row, current_row + span_rows - 1)
+                if index == len(raw_spans) - 1:
+                    row_end = end_row
+                segments.append((current_row, row_end, valid_layers[index]))
+                current_row = row_end + 1
+                if current_row > end_row:
+                    break
+
+            return segments
+
+        # If template provides explicit depth markers but user provided fewer layers,
+        # repeat the last provided layer until there are as many layers as depth markers.
+        if depth_rows and len(valid_layers) < len(depth_rows):
+            last = valid_layers[-1]
+            while len(valid_layers) < len(depth_rows):
+                # append a shallow copy so modifications don't affect original
+                valid_layers.append(dict(last))
+
+        depths: List[float] = []
+        for index, layer in enumerate(valid_layers):
+            raw_depth = layer.get("profundidad_z")
+            try:
+                depth = float(raw_depth)
+            except Exception:
+                depth = float(index + 1)
+            if depth <= 0:
+                depth = float(index + 1)
+            depths.append(depth)
+
+        if any(depths[index] <= depths[index - 1] for index in range(1, len(depths))):
+            depths = [float(index + 1) for index in range(len(valid_layers))]
+
+        segments = []
+        current_row = start_row
+        for index, depth in enumerate(depths):
+            row_end = end_row
+            for row_number, marker in depth_rows:
+                if marker >= depth:
+                    row_end = row_number
+                    break
+            segments.append((current_row, row_end, valid_layers[index]))
+            current_row = row_end + 1
+            if current_row > end_row:
+                break
+
+        return segments
 
     def _clear_cell_children(self, cell):
         for child in list(cell):
@@ -319,6 +475,15 @@ class ExcelService:
         perforacion_mapping = get_perforacion_mapping(template_id)
         start_row = perforacion_mapping["tabla_inicio_row"]
         allowed_columns = perforacion_mapping["allowed_columns"]
+        if str(template_id) == "1":
+            f_end = 16
+        elif str(template_id) == "2":
+            f_end = 25
+        elif str(template_id) == "3":
+            f_end = 35
+        else:
+            f_end = start_row + max(0, len(perforaciones or [])) - 1
+
         rng = random.SystemRandom()
         reduce_next = bool(rng.getrandbits(1))
 
@@ -326,6 +491,8 @@ class ExcelService:
             row_number = start_row + index
             for field_name, column_letter in allowed_columns.items():
                 if field_name == "profundidad_z":
+                    continue
+                if field_name == "descripcion_suelo":
                     continue
 
                 value = row_data.get(field_name, "")
@@ -335,21 +502,25 @@ class ExcelService:
 
                 primary_updates[f"{column_letter}{row_number}"] = value
 
+        # Gamma column B starts at 15 and increments by layer across the visible rows.
+        # This keeps the gamma values tied to the discovered layers.
+        layer_count = len(perforaciones or [])
+        if layer_count > 0:
+            for index in range(layer_count):
+                primary_updates[f"B{start_row + index}"] = 15 + index
+            last_gamma = 15 + max(0, layer_count - 1)
+            for row_number in range(start_row + layer_count, f_end + 1):
+                primary_updates[f"B{row_number}"] = last_gamma
+        else:
+            for row_number in range(start_row, f_end + 1):
+                primary_updates[f"B{row_number}"] = None
+
         # If the soil description column is empty, mirror the same-row L cell.
-        for row_number in range(start_row, 17):
+        for row_number in range(start_row, f_end + 1):
             p_cell = f"P{row_number}"
             if primary_updates.get(p_cell) in (None, ""):
                 primary_updates[p_cell] = f"=L{row_number}"
 
-        if str(template_id) in {"1", "3"}:
-            # Keep the gamma column aligned with the number of soil species/layers provided.
-            # Any remaining rows in the visible range are cleared so the column shows only
-            # the needed values: 2 species -> 15,16; 3 species -> 15,16,17; etc.
-            used_rows = len(perforaciones or [])
-            for row_number in range(start_row + used_rows, 17):
-                primary_updates[f"B{row_number}"] = None
-
-            
         # Enforce specific SPT values per plantilla
         if str(template_id) == "1":
             spt_values = [7, 8, 15, 19, 23, 26, 29]
@@ -377,15 +548,6 @@ class ExcelService:
         # Convert the numeric SPT values in column F into ranges like "6-7", "7-8",
         # using the final value that will appear in column F. Apply across the full
         # target range for each plantilla so the visible SPT block shows ranges.
-        if str(template_id) == "1":
-            f_end = 16
-        elif str(template_id) == "2":
-            f_end = 25
-        elif str(template_id) == "3":
-            f_end = 35
-        else:
-            f_end = start_row + max(0, len(perforaciones or [])) - 1
-
         # Decide per-copy whether to show the lower or upper value.
         # Implement alternating behavior across generated files using a toggle file
         # stored under the generated directory so successive calls flip choice.
@@ -470,6 +632,63 @@ class ExcelService:
                                 sheet_obj[cell_ref] = value
                         except Exception:
                             continue
+
+                    def build_soil_text(layer: dict) -> str:
+                        descripcion = self._clean_soil_text(layer.get('descripcion_suelo'), layer.get('color_predominante'))
+                        if descripcion:
+                            return descripcion
+                        tipo = self._clean_soil_text(layer.get('tipo_suelo_principal'), layer.get('color_predominante'))
+                        return tipo
+
+                    q_segments = self._build_soil_segments(sheet_obj, list(perforaciones or []), start_row, f_end)
+
+                    # Coalesce adjacent segments that render the same soil text so they
+                    # appear as a single merged block (user requested centrar y combinarlas)
+                    def _segment_text(seg):
+                        return build_soil_text(seg[2])
+
+                    coalesced = []
+                    for seg in q_segments:
+                        if not coalesced:
+                            coalesced.append(list(seg))
+                            continue
+                        prev = coalesced[-1]
+                        if _segment_text(prev) == _segment_text(seg) and seg[0] == prev[1] + 1:
+                            # extend previous segment
+                            prev[1] = seg[1]
+                        else:
+                            coalesced.append(list(seg))
+
+                    # normalize back to tuples
+                    q_segments = [(s[0], s[1], s[2]) for s in coalesced]
+
+                    for merged_range in list(sheet_obj.merged_cells.ranges):
+                        if merged_range.min_col <= 17 <= merged_range.max_col:
+                            if merged_range.max_row >= start_row and merged_range.min_row <= f_end:
+                                start_cell = merged_range.start_cell.coordinate
+                                if start_cell.startswith('Q'):
+                                    try:
+                                        sheet_obj.unmerge_cells(str(merged_range))
+                                    except Exception:
+                                        pass
+
+                    for row_start, row_end, layer in q_segments:
+                        q_range = f"Q{row_start}" if row_start == row_end else f"Q{row_start}:Q{row_end}"
+                        if row_start != row_end:
+                            try:
+                                sheet_obj.merge_cells(q_range)
+                            except Exception:
+                                pass
+
+                        q_anchor = sheet_obj[f'Q{row_start}']
+                        q_anchor.value = build_soil_text(layer)
+                        fill, font_color = self._soil_style_from_color(layer.get('color_predominante'))
+                        q_anchor.fill = fill
+                        q_anchor.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                        soil_font = copy(q_anchor.font)
+                        soil_font.color = font_color
+                        q_anchor.font = soil_font
+
                 # Try to attach default template image if present
                 try:
                     from openpyxl.drawing.image import Image as XLImage

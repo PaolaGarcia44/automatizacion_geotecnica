@@ -67,13 +67,22 @@ class DocumentService:
                     selected_template = '3'
                 default_perforaciones = perforaciones_to_use
 
-            # For plantilla 1 and 3, fill gamma values sequentially when they are missing.
-            # This makes the column depend on the number of soil layers/species:
-            # 2 layers -> 15, 16; 3 layers -> 15, 16, 17; and so on.
-            if selected_template in {'1', '3'}:
-                for index, row_data in enumerate(default_perforaciones):
-                    if row_data.get('gamma') in (None, ''):
-                        row_data['gamma'] = 15 + index
+            # If the user provided soil menu values, keep the visible text focused on
+            # the soil type; the predominant color will be rendered as cell fill.
+            for row_data in default_perforaciones:
+                tipo_suelo = row_data.get('tipo_suelo_principal')
+                descripcion_suelo = row_data.get('descripcion_suelo')
+
+                if not descripcion_suelo:
+                    row_data['descripcion_suelo'] = str(tipo_suelo or '').strip()
+
+            # Fill gamma values sequentially when they are missing.
+            # The first soil layer starts at 15 and each additional layer increments by 1.
+            # This applies to all templates so the gamma column stays aligned with the
+            # number of layers the user entered from the soil menus.
+            for index, row_data in enumerate(default_perforaciones):
+                if row_data.get('gamma') in (None, ''):
+                    row_data['gamma'] = 15 + index
 
             # Only write Proyecto and Fecha to the template; leave all other cells unchanged
             # Force proyecto_ubicacion to uppercase for the copy

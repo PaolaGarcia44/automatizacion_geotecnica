@@ -27,7 +27,7 @@ PERFORACION_MAPPING = {
         "gamma": "B",
         "n_campo_spt": "F",
         "cohesion_c": "O",
-        "descripcion_suelo": "P",
+        "descripcion_suelo": "Q",
     },
 }
 

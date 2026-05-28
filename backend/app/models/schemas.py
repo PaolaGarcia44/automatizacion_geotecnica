@@ -8,10 +8,12 @@ class PerforacionData(BaseModel):
     """Datos de una fila de sondeo/perforación."""
 
     profundidad_z: float = Field(..., description="Profundidad Z en metros")
-    gamma: float = Field(..., description="Peso específico gamma en kN/m³")
+    gamma: Optional[float] = Field(None, description="Peso específico gamma en kN/m³")
     n_campo_spt: int = Field(..., description="N de campo SPT")
     cohesion_c: Optional[float] = Field(None, description="Cohesión C' en kPa")
     descripcion_suelo: str = Field(..., description="Descripción del suelo")
+    tipo_suelo_principal: Optional[str] = Field(None, description="Menú 1: tipo de suelo principal")
+    color_predominante: Optional[str] = Field(None, description="Menú 2: color predominante")
 
 
 class ParametroRangoData(BaseModel):
@@ -57,6 +59,8 @@ class DocumentGenerationRequest(BaseModel):
                         "n_campo_spt": 12,
                         "cohesion_c": 5.0,
                         "descripcion_suelo": "Arena limosa",
+                        "tipo_suelo_principal": "Arena arenosa",
+                        "color_predominante": "Café",
                     }
                 ],
                 "parametros": [

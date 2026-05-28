@@ -7,10 +7,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export interface PerforacionData {
   profundidad_z: number
-  gamma: number
+  gamma?: number | null
   n_campo_spt: number
   cohesion_c?: number | null
   descripcion_suelo: string
+  tipo_suelo_principal?: string | null
+  color_predominante?: string | null
 }
 
 export interface ParametroRangoData {
@@ -27,6 +29,7 @@ export interface DocumentGenerationRequest {
   proyecto_ubicacion: string
   fecha_registro: string
   pisos: number
+  perforaciones?: PerforacionData[]
 }
 
 export interface DocumentGenerationResponse {
@@ -36,6 +39,46 @@ export interface DocumentGenerationResponse {
   files?: string[]
   download_url?: string
   timestamp?: string
+}
+
+function formatApiError(detail: unknown): string {
+  if (typeof detail === 'string') {
+    return detail
+  }
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (typeof item === 'string') {
+          return item
+        }
+
+        if (item && typeof item === 'object') {
+          const message = (item as { msg?: unknown; message?: unknown; loc?: unknown }).msg ?? (item as { msg?: unknown; message?: unknown; loc?: unknown }).message
+          const location = (item as { loc?: unknown }).loc
+          const locationText = Array.isArray(location) ? location.join(' > ') : ''
+          if (typeof message === 'string' && locationText) {
+            return `${locationText}: ${message}`
+          }
+          if (typeof message === 'string') {
+            return message
+          }
+        }
+
+        return JSON.stringify(item)
+      })
+      .join(' | ')
+  }
+
+  if (detail && typeof detail === 'object') {
+    const maybeMessage = (detail as { detail?: unknown; message?: unknown }).detail ?? (detail as { message?: unknown }).message
+    if (maybeMessage) {
+      return formatApiError(maybeMessage)
+    }
+    return JSON.stringify(detail)
+  }
+
+  return 'Error desconocido al generar documentos'
 }
 
 /**
@@ -58,7 +101,7 @@ export const generateDocuments = async (
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.detail || 'Error al generar documentos')
+      throw new Error(formatApiError(error.detail ?? error.message ?? error))
     }
 
     const data: DocumentGenerationResponse = await response.json()
