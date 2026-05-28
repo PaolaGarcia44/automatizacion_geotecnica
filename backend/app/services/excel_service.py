@@ -456,6 +456,38 @@ class ExcelService:
     ) -> Path:
         work_file = self._copy_template(template_id, project_id)
 
+        laboratorio_template_ids = {'4', '5', '6'}
+        if str(template_id) in laboratorio_template_ids:
+            try:
+                wb_tmp = load_workbook(work_file)
+                target_sheet = None
+                for sheet_name in wb_tmp.sheetnames:
+                    if self._normalize(sheet_name) == self._normalize('Clasificacion'):
+                        target_sheet = wb_tmp[sheet_name]
+                        break
+                if target_sheet is None:
+                    target_sheet = wb_tmp[wb_tmp.sheetnames[0]]
+
+                project_value = data.get('proyecto_ubicacion')
+                fecha_value = data.get('fecha_registro')
+                self._set_cell_value(target_sheet, 'H2', project_value)
+                self._set_cell_value(target_sheet, 'L2', fecha_value)
+
+                random_values = random.sample(range(10, 100), 3)
+                for cell_ref, value in zip(('K13', 'L13', 'M13'), random_values):
+                    self._set_cell_value(target_sheet, cell_ref, value)
+
+                wb_tmp.save(work_file)
+                wb_tmp.close()
+            finally:
+                try:
+                    self._remove_calcchain(work_file)
+                except Exception:
+                    logger.debug("No se pudo eliminar calcChain del libro generado", exc_info=True)
+
+            logger.info("Excel generado exitosamente: %s", work_file)
+            return work_file
+
         sheet_targets = self._resolve_sheet_targets(work_file)
         sheet_updates = {}
 

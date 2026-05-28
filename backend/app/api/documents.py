@@ -38,6 +38,8 @@ async def generate_documents(request: DocumentGenerationRequest) -> DocumentGene
         parametros = [p.model_dump() for p in request.parametros]
 
         result = document_service.generate_documents(
+            template_id=request.template_id,
+            template_ids=request.template_ids,
             proyecto_ubicacion=request.proyecto_ubicacion,
             fecha_registro=request.fecha_registro,
             pisos=request.pisos,
@@ -64,13 +66,17 @@ async def download_excel(filename: str):
     safe_name = Path(filename).name
     file_path = settings.GENERATED_DIR / safe_name
 
-    if not file_path.exists() or file_path.suffix.lower() != ".xlsx":
+    if not file_path.exists() or file_path.suffix.lower() not in {".xlsx", ".zip"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Archivo no encontrado")
+
+    media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if file_path.suffix.lower() == ".zip":
+        media_type = "application/zip"
 
     return FileResponse(
         path=str(file_path),
         filename=safe_name,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        media_type=media_type,
     )
 
 

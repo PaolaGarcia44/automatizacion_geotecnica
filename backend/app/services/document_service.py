@@ -4,7 +4,10 @@ import logging
 from datetime import datetime
 from uuid import uuid4
 from typing import Dict, List, Optional
+from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
+from app.core.config import settings
 from app.services.excel_service import excel_service
 
 logger = logging.getLogger(__name__)
@@ -23,6 +26,8 @@ class DocumentService:
         pisos: int,
         perforaciones: Optional[List[Dict]] = None,
         parametros: Optional[List[Dict]] = None,
+        template_id: Optional[str] = None,
+        template_ids: Optional[List[str]] = None,
     ) -> Dict:
         """Generate the Excel file from the selected template."""        
         try:
@@ -31,34 +36,41 @@ class DocumentService:
 
             perforaciones_to_use = perforaciones or []
 
-            # Decide plantilla y perforaciones por defecto según número de pisos
+            # Decide plantilla and defaults either from an explicit template_id or from pisos.
             nPisos = int(pisos or 0)
-            if not perforaciones_to_use:
-                if nPisos <= 3:
-                    selected_template = '1'
-                    default_perforaciones = [
+            requested_template = str(template_id).strip() if template_id is not None and str(template_id).strip() else None
+
+            def _default_perforaciones_for_template(template_key: str) -> List[Dict]:
+                if template_key == '1':
+                    return [
                         {"profundidad_z": 6, "gamma": 15, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
                         {"profundidad_z": 6, "gamma": 16, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
                         {"profundidad_z": 6, "gamma": 17, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
                     ]
+                if template_key in {'2', '3'}:
+                    return [
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
+                    ]
+                return []
+
+            if requested_template in {'1', '2', '3'}:
+                selected_template = requested_template
+                default_perforaciones = perforaciones_to_use or _default_perforaciones_for_template(selected_template)
+            elif requested_template in {'4', '5', '6'}:
+                selected_template = requested_template
+                default_perforaciones = perforaciones_to_use
+            elif not perforaciones_to_use:
+                if nPisos <= 3:
+                    selected_template = '1'
                 elif nPisos <= 10:
                     selected_template = '2'
-                    default_perforaciones = [
-                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                    ]
                 else:
                     selected_template = '3'
-                    default_perforaciones = [
-                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                        {"profundidad_z": 15, "gamma": None, "n_campo_spt": 0, "cohesion_c": None, "descripcion_suelo": ""},
-                    ]
+                default_perforaciones = _default_perforaciones_for_template(selected_template)
             else:
-                # If user provided perforaciones, still choose template according to pisos thresholds
                 if nPisos <= 3:
                     selected_template = '1'
                 elif nPisos <= 10:
@@ -115,6 +127,59 @@ class DocumentService:
                 # static label required by UI: A5 should read 'Parámetro:'
                 "parametro_label": "Parámetro:",
             }
+
+            requested_templates = [str(item).strip() for item in (template_ids or []) if str(item).strip()]
+            if requested_templates:
+                # Batch mode: include the base plantilla for the floor range plus the LABORATORIO set.
+                base_template_id = '1' if nPisos <= 3 else '2' if nPisos <= 10 else '3'
+                laboratorio_template_ids = ['4', '5', '6'] if nPisos <= 3 else ['4', '5', '6', '7']
+                batch_templates = [base_template_id, *laboratorio_template_ids]
+
+                output_files = []
+                with ZipFile(self.excel_service.generated_dir / f"{project_id}_paquete.xlsx.zip", 'w', compression=ZIP_DEFLATED) as zip_file:
+                    for current_template in batch_templates:
+                        generated_file = self.excel_service.generate_excel(
+                            template_id=current_template,
+                            project_id=project_id,
+                            data=excel_data,
+                            perforaciones=default_perforaciones,
+                            parametros=parametros or [],
+                        )
+                        output_files.append(generated_file)
+
+                        # Map known LABORATORIO templates to friendly names inside the ZIP
+                        archive_name_map = {
+                            '4': 'LABORATORIO - FORMULAS 1.xlsx',
+                            '5': 'LABORATORIO - FORMULAS 2.xlsx',
+                            '6': 'LABORATORIO - FORMULAS 3.xlsx',
+                            '7': 'LABORATORIO - FORMULAS 4.xlsx',
+                        }
+
+                        # The base plantilla (first in batch_templates) should use
+                        # the descriptive name requested by the user instead of
+                        # 'plantilla_#.xlsx'.
+                        if str(current_template) == str(base_template_id):
+                            archive_name = 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx'
+                        else:
+                            archive_name = archive_name_map.get(
+                                str(current_template),
+                                settings.TEMPLATES_CONFIG.get(str(current_template), generated_file.name),
+                            )
+
+                        zip_file.write(generated_file, arcname=archive_name)
+
+                zip_path = self.excel_service.generated_dir / f"{project_id}_paquete.xlsx.zip"
+
+                return {
+                    "success": True,
+                    "message": "Documentos generados exitosamente en paquete ZIP",
+                    "project_id": project_id,
+                    "files": [str(file_path) for file_path in output_files] + [str(zip_path)],
+                    "download_url": f"/api/download/{zip_path.name}",
+                    "timestamp": timestamp,
+                    "template_id": ",".join(batch_templates),
+                    "proyecto_ubicacion": proyecto_upper,
+                }
 
             logger.info("Iniciando generación de documentos para proyecto: %s", proyecto_ubicacion)
 

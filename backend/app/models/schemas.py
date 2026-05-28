@@ -41,6 +41,7 @@ class DocumentGenerationRequest(BaseModel):
     nivel_freatico: Optional[Union[str, float]] = Field("N.A.", description="Nivel freático o N.A.")
     perforaciones: List[PerforacionData] = Field(default_factory=list)
     parametros: List[ParametroRangoData] = Field(default_factory=list)
+    template_ids: Optional[List[str]] = Field(None, description="Plantillas a generar en lote")
 
     model_config = {
         "json_schema_extra": {

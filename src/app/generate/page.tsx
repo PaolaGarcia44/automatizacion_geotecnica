@@ -154,6 +154,7 @@ export default function GenerarPage() {
         proyecto_ubicacion: proyectoUbicacion.toUpperCase(),
         fecha_registro: fechaRegistro,
         pisos: nPisos,
+        template_ids: nPisos <= 3 ? ['4', '5', '6'] : ['4', '5', '6', '7'],
         perforaciones,
       }
 
@@ -368,13 +369,13 @@ export default function GenerarPage() {
               onClick={handleSubmit}
               disabled={isSubmitting}
               className='h-12 min-w-56 gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-slate-900 px-6 text-white shadow-lg shadow-blue-200 hover:from-blue-500 hover:to-slate-800'
-              title='Genera el Excel usando las perforaciones automáticas según pisos'
+              title='Genera una carpeta ZIP con varios Excel según el número de pisos'
             >
               <>
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Generar Excel (automatizado)
+                Generar carpeta ZIP
               </>
             </Button>
           </div>
@@ -393,7 +394,7 @@ export default function GenerarPage() {
               {downloadUrl && (
                 <Button onClick={() => downloadGeneratedFile(downloadUrl)} className='w-full gap-2'>
                   <Download className='h-4 w-4' />
-                  Descargar Excel
+                  Descargar ZIP
                 </Button>
               )}
               <Button onClick={() => setShowSuccessModal(false)} className='w-full'>

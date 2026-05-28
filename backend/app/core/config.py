@@ -33,6 +33,10 @@ class Settings(BaseSettings):
         "1": "plantilla_1.xlsx",
         "2": "plantilla_2.xlsx",
         "3": "plantilla_3.xlsx",
+        "4": "LABORATORIO - FORMULAS 1.xlsx",
+        "5": "LABORATORIO - FORMULAS 2.xlsx",
+        "6": "LABORATORIO - FORMULAS 3.xlsx",
+        "7": "LABORATORIO - FORMULAS 4.xlsx",
     }
     
     class Config:

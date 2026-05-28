@@ -30,6 +30,8 @@ export interface DocumentGenerationRequest {
   fecha_registro: string
   pisos: number
   perforaciones?: PerforacionData[]
+  template_id?: string
+  template_ids?: string[]
 }
 
 export interface DocumentGenerationResponse {
@@ -190,7 +192,15 @@ export const downloadGeneratedFile = async (downloadUrl?: string): Promise<void>
   const objectUrl = window.URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = objectUrl
-  anchor.download = 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx'
+  const urlPath = (() => {
+    try {
+      return new URL(buildDownloadUrl(downloadUrl)).pathname
+    } catch {
+      return downloadUrl
+    }
+  })()
+  const filename = decodeURIComponent(urlPath.split('/').pop() || 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.zip')
+  anchor.download = filename
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
