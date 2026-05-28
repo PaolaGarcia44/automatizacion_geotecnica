@@ -87,9 +87,31 @@ class DocumentService:
             # Only write Proyecto and Fecha to the template; leave all other cells unchanged
             # Force proyecto_ubicacion to uppercase for the copy
             proyecto_upper = proyecto_ubicacion.upper() if isinstance(proyecto_ubicacion, str) else proyecto_ubicacion
+
+            # Calculate fecha_registro + 20 days for cell C7. Support date or ISO string inputs.
+            from datetime import date, timedelta
+
+            fecha_obj = None
+            if isinstance(fecha_registro, date) and not isinstance(fecha_registro, datetime):
+                fecha_obj = fecha_registro
+            elif isinstance(fecha_registro, datetime):
+                fecha_obj = fecha_registro.date()
+            elif isinstance(fecha_registro, str):
+                try:
+                    fecha_obj = datetime.fromisoformat(fecha_registro).date()
+                except Exception:
+                    try:
+                        fecha_obj = date.fromisoformat(fecha_registro)
+                    except Exception:
+                        fecha_obj = None
+
+            fecha_c7 = None
+            if fecha_obj:
+                fecha_c7 = fecha_obj + timedelta(days=20)
+
             excel_data = {
                 "proyecto_ubicacion": proyecto_upper,
-                "fecha_registro": fecha_registro,
+                "fecha_registro": fecha_c7 if fecha_c7 is not None else fecha_registro,
                 # static label required by UI: A5 should read 'Parámetro:'
                 "parametro_label": "Parámetro:",
             }
