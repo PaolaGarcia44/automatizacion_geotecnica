@@ -11,6 +11,8 @@ from __future__ import annotations
 GENERAL_FIELD_MAPPING = {
     # Write the project name in C6 (short name). A5 will be used as a static label 'Parámetro:'
     "proyecto_ubicacion": ["C6"],
+    # The client is intentionally not written into the plantilla A4 by default.
+    # Template-specific code (e.g. LABORATORIO, CAPACIDAD) writes client where needed.
     # Static label on the primary sheet
     "parametro_label": ["A5"],
     "fecha_registro": ["C7"],

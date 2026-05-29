@@ -425,6 +425,14 @@ class ExcelService:
             for cell_ref in cell_refs:
                 self._set_cell_value(worksheet, cell_ref, value)
 
+    def _format_client(self, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            return str(value).strip().upper()
+        except Exception:
+            return str(value)
+
     def _fill_rows(self, worksheet, mapping: dict, rows: List[dict], seed: str = ""):
         if not rows:
             return
@@ -458,6 +466,45 @@ class ExcelService:
     ) -> Path:
         work_file = self._copy_template(template_id, project_id)
 
+        if str(template_id) == '8':
+            try:
+                wb_tmp = load_workbook(work_file)
+                target_sheet = self._get_sheet(wb_tmp, 'MÉTODO TERZAGHI')
+
+                project_value = data.get('proyecto_ubicacion')
+                client_value = self._format_client(data.get('cliente'))
+                fecha_value = data.get('fecha_registro')
+
+                # Construct header describing the structure levels based on 'pisos'
+                pisos_value = data.get('pisos')
+                try:
+                    pisos_int = int(pisos_value or 0)
+                except Exception:
+                    pisos_int = 0
+                if pisos_int == 1:
+                    estructura_text = 'ESTRUCTURA DE CONSTRUCCIÓN DE 1 NIVEL'
+                elif pisos_int > 1:
+                    estructura_text = f'ESTRUCTURA DE CONSTRUCCIÓN DE {pisos_int} NIVELES'
+                else:
+                    estructura_text = 'ESTRUCTURA DE CONSTRUCCIÓN'
+                self._set_cell_value(target_sheet, 'E1', estructura_text)
+                self._set_cell_value(target_sheet, 'E2', project_value)
+                self._set_cell_value(target_sheet, 'E3', client_value)
+                self._set_cell_value(target_sheet, 'E5', fecha_value)
+
+                # Keep the worksheet's existing formula structure; only refresh the
+                # standard project metadata so it reflects the current frontend.
+                wb_tmp.save(work_file)
+                wb_tmp.close()
+            finally:
+                try:
+                    self._remove_calcchain(work_file)
+                except Exception:
+                    logger.debug("No se pudo eliminar calcChain del libro generado", exc_info=True)
+
+            logger.info("Excel generado exitosamente: %s", work_file)
+            return work_file
+
         laboratorio_template_ids = {'4', '5', '6', '7'}
         if str(template_id) in laboratorio_template_ids:
             try:
@@ -471,7 +518,7 @@ class ExcelService:
                     target_sheet = wb_tmp[wb_tmp.sheetnames[0]]
 
                 project_value = data.get('proyecto_ubicacion')
-                cliente_value = data.get('cliente')
+                cliente_value = self._format_client(data.get('cliente'))
                 fecha_original_value = data.get('fecha_registro_original', data.get('fecha_registro'))
                 fecha_plus_20_value = data.get('fecha_registro')
                 self._set_cell_value(target_sheet, 'H2', project_value)

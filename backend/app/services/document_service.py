@@ -67,24 +67,17 @@ class DocumentService:
             if requested_template in {'1', '2', '3'}:
                 selected_template = requested_template
                 default_perforaciones = perforaciones_to_use or _default_perforaciones_for_template(selected_template)
+            elif requested_template == '8':
+                selected_template = requested_template
+                default_perforaciones = perforaciones_to_use
             elif requested_template in {'4', '5', '6'}:
                 selected_template = requested_template
                 default_perforaciones = perforaciones_to_use
             elif not perforaciones_to_use:
-                if nPisos <= 3:
-                    selected_template = '1'
-                elif nPisos <= 10:
-                    selected_template = '2'
-                else:
-                    selected_template = '3'
-                default_perforaciones = _default_perforaciones_for_template(selected_template)
+                selected_template = '8'
+                default_perforaciones = perforaciones_to_use
             else:
-                if nPisos <= 3:
-                    selected_template = '1'
-                elif nPisos <= 10:
-                    selected_template = '2'
-                else:
-                    selected_template = '3'
+                selected_template = '8'
                 default_perforaciones = perforaciones_to_use
 
             # If the user provided soil menu values, keep the visible text focused on
@@ -131,19 +124,23 @@ class DocumentService:
 
             excel_data = {
                 "proyecto_ubicacion": proyecto_upper,
+                "cliente_display": f"Cliente: {cliente}" if cliente else None,
                 "fecha_registro": fecha_c7 if fecha_c7 is not None else fecha_registro,
                 "fecha_registro_original": fecha_obj if fecha_obj is not None else fecha_registro,
                 "cliente": cliente,
+                "pisos": nPisos,
                 # static label required by UI: A5 should read 'Parámetro:'
                 "parametro_label": "Parámetro:",
             }
 
             requested_templates = [str(item).strip() for item in (template_ids or []) if str(item).strip()]
             if requested_templates:
-                # Batch mode: include the base plantilla for the floor range plus the LABORATORIO set.
-                base_template_id = '1' if nPisos <= 3 else '2' if nPisos <= 10 else '3'
+                # Batch mode: include the capacity template, the correlation template
+                # for the floor range, plus the LABORATORIO set.
+                capacity_template_id = '8'
+                correlation_template_id = '1' if nPisos <= 3 else '2' if nPisos <= 10 else '3'
                 laboratorio_template_ids = ['4', '5', '6'] if nPisos <= 3 else ['4', '5', '6', '7']
-                batch_templates = [base_template_id, *laboratorio_template_ids]
+                batch_templates = [capacity_template_id, correlation_template_id, *laboratorio_template_ids]
 
                 client_slug = self._slugify_filename(str(cliente or '').strip(), 'cliente')
                 project_slug = self._slugify_filename(proyecto_upper, 'proyecto')
@@ -162,19 +159,20 @@ class DocumentService:
                         )
                         output_files.append(generated_file)
 
-                        # Map known LABORATORIO templates to friendly names inside the ZIP
+                        # Map known templates to friendly names inside the ZIP
                         archive_name_map = {
+                            '1': 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx',
+                            '2': 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx',
+                            '3': 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx',
                             '4': 'LABORATORIO - FORMULAS 1.xlsx',
                             '5': 'LABORATORIO - FORMULAS 2.xlsx',
                             '6': 'LABORATORIO - FORMULAS 3.xlsx',
                             '7': 'LABORATORIO - FORMULAS 4.xlsx',
                         }
 
-                        # The base plantilla (first in batch_templates) should use
-                        # the descriptive name requested by the user instead of
-                        # 'plantilla_#.xlsx'.
-                        if str(current_template) == str(base_template_id):
-                            archive_name = 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx'
+                        # The capacity workbook should keep its real filename inside the ZIP.
+                        if str(current_template) == str(capacity_template_id):
+                            archive_name = settings.TEMPLATES_CONFIG.get(str(current_template), generated_file.name)
                         else:
                             archive_name = archive_name_map.get(
                                 str(current_template),
