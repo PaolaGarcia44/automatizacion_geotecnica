@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import shutil
 import unicodedata
 from datetime import date
@@ -433,6 +434,28 @@ class ExcelService:
         except Exception:
             return str(value)
 
+    def _split_project_location(self, value: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+        if value is None:
+            return None, None
+        try:
+            text = str(value).strip()
+        except Exception:
+            return str(value), None
+
+        if not text:
+            return None, None
+
+        separators = [" - ", " | ", " / ", " — ", " – ", "\n", "-"]
+        for separator in separators:
+            if separator in text:
+                left, right = text.split(separator, 1)
+                left = left.strip(" -|/,\t\r\n")
+                right = right.strip(" -|/,\t\r\n")
+                if left and right:
+                    return left, right
+
+        return text, None
+
     def _fill_rows(self, worksheet, mapping: dict, rows: List[dict], seed: str = ""):
         if not rows:
             return
@@ -547,6 +570,106 @@ class ExcelService:
                 random_values = random.sample(range(10, 100), 3)
                 for cell_ref, value in zip(('K13', 'L13', 'M13'), random_values):
                     self._set_cell_value(target_sheet, cell_ref, value)
+
+                wb_tmp.save(work_file)
+                wb_tmp.close()
+            finally:
+                try:
+                    self._remove_calcchain(work_file)
+                except Exception:
+                    logger.debug("No se pudo eliminar calcChain del libro generado", exc_info=True)
+
+            logger.info("Excel generado exitosamente: %s", work_file)
+            return work_file
+
+        if str(template_id) == '9':
+            try:
+                wb_tmp = load_workbook(work_file)
+                target_sheet = wb_tmp.active
+
+                cliente_value = self._format_client(data.get('cliente'))
+                fecha_value = data.get('fecha_registro')
+                proyecto_text = data.get('proyecto_ubicacion')
+                proyecto_value, ubicacion_value = self._split_project_location(proyecto_text)
+                pisos_value = data.get('pisos')
+                try:
+                    pisos_int = int(pisos_value or 0)
+                except Exception:
+                    pisos_int = 0
+
+                if pisos_int > 0:
+                    proyecto_display = f"PROYECTO DE {pisos_int} PISOS NIVELES"
+                else:
+                    proyecto_display = "PROYECTO DE PISOS NIVELES"
+
+                self._set_cell_value(target_sheet, 'C7', cliente_value)
+                self._set_cell_value(target_sheet, 'C8', proyecto_value or proyecto_display)
+                self._set_cell_value(target_sheet, 'C9', ubicacion_value)
+                self._set_cell_value(target_sheet, 'C10', None)
+                self._set_cell_value(target_sheet, 'G7', fecha_value)
+
+                selected_description = None
+                if perforaciones:
+                    first_layer = perforaciones[0]
+                    selected_description = self._clean_soil_text(
+                        first_layer.get('descripcion_suelo'),
+                        first_layer.get('color_predominante'),
+                    )
+                    if not selected_description:
+                        selected_description = self._clean_soil_text(
+                            first_layer.get('tipo_suelo_principal'),
+                            first_layer.get('color_predominante'),
+                        )
+                    if selected_description:
+                        selected_description = selected_description.upper()
+
+                if selected_description:
+                    self._set_cell_value(target_sheet, 'C10', selected_description)
+
+                wb_tmp.save(work_file)
+                wb_tmp.close()
+            finally:
+                try:
+                    self._remove_calcchain(work_file)
+                except Exception:
+                    logger.debug("No se pudo eliminar calcChain del libro generado", exc_info=True)
+
+            logger.info("Excel generado exitosamente: %s", work_file)
+            return work_file
+
+        asentamientos_template_ids = {'10', '11'}
+        if str(template_id) in asentamientos_template_ids:
+            try:
+                wb_tmp = load_workbook(work_file)
+                target_sheet = wb_tmp.active
+
+                cliente_value = self._format_client(data.get('cliente'))
+                fecha_value = data.get('fecha_registro')
+                proyecto_text = data.get('proyecto_ubicacion')
+                proyecto_value = str(proyecto_text).strip().upper() if proyecto_text is not None else None
+                pisos_value = data.get('pisos')
+                try:
+                    pisos_int = int(pisos_value or 0)
+                except Exception:
+                    pisos_int = 0
+
+                if pisos_int > 0:
+                    pisos_text = str(pisos_int)
+                else:
+                    pisos_text = ''
+
+                if pisos_int > 0:
+                    if pisos_int == 1:
+                        e4_updated = 'ESTRUCTURA DE 1 NIVEL'
+                    else:
+                        e4_updated = f'ESTRUCTURA DE {pisos_int} NIVELES'
+                else:
+                    e4_updated = target_sheet['E4'].value
+
+                self._set_cell_value(target_sheet, 'E4', e4_updated)
+                self._set_cell_value(target_sheet, 'E5', proyecto_value)
+                self._set_cell_value(target_sheet, 'E6', cliente_value)
+                self._set_cell_value(target_sheet, 'E8', fecha_value)
 
                 wb_tmp.save(work_file)
                 wb_tmp.close()

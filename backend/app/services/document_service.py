@@ -389,7 +389,7 @@ class DocumentService:
                 capacity_template_id = '8'
                 correlation_template_id = '1' if nPisos <= 3 else '2' if nPisos <= 10 else '3'
                 laboratorio_template_ids = ['4', '5', '6'] if nPisos <= 3 else ['4', '5', '6', '7']
-                batch_templates = [capacity_template_id, correlation_template_id, *laboratorio_template_ids]
+                batch_templates = [capacity_template_id, correlation_template_id, *laboratorio_template_ids, '9']
                 if nPisos <= 3:
                     perfil_template_name = 'PERFIL DEL SUELO 6M.xlsx'
                 elif nPisos <= 10:
@@ -407,6 +407,9 @@ class DocumentService:
                 perfil_added = False
                 perfil_error = None
                 perfil_generated_file = None
+                asentamientos_template_ids = ['10', '11']
+                batch_templates_with_asentamientos = [*batch_templates, *asentamientos_template_ids]
+
                 with ZipFile(zip_path, 'w', compression=ZIP_DEFLATED) as zip_file:
                     for current_template in batch_templates:
                         generated_file = self.excel_service.generate_excel(
@@ -439,6 +442,21 @@ class DocumentService:
                             )
 
                         zip_file.write(generated_file, arcname=archive_name)
+
+                    asentamientos_template_names = {
+                        '10': 'ASENTAMIENTOS ZAPATAS 300.xlsx',
+                        '11': 'ASENTAMIENTOS ZAPATAS 800.xlsx',
+                    }
+                    for current_template in asentamientos_template_ids:
+                        generated_file = self.excel_service.generate_excel(
+                            template_id=current_template,
+                            project_id=project_id,
+                            data=excel_data,
+                            perforaciones=default_perforaciones,
+                            parametros=parametros or [],
+                        )
+                        output_files.append(generated_file)
+                        zip_file.write(generated_file, arcname=asentamientos_template_names[current_template])
 
                     if perfil_template_path.exists():
                         try:
@@ -473,7 +491,7 @@ class DocumentService:
                     "files": [str(file_path) for file_path in output_files] + [str(zip_path)],
                     "download_url": f"/api/download/{zip_path.name}",
                     "timestamp": timestamp,
-                    "template_id": ",".join(batch_templates),
+                    "template_id": ",".join(batch_templates_with_asentamientos),
                     "proyecto_ubicacion": proyecto_upper,
                 }
 
