@@ -774,6 +774,14 @@ class ExcelService:
                         soil_font.color = font_color
                         q_anchor.font = soil_font
 
+                        if str(template_id) == "1":
+                            gamma_value = layer.get('gamma')
+                            for row_number in range(row_start, row_end + 1):
+                                b_cell = sheet_obj[f'B{row_number}']
+                                b_cell.value = gamma_value
+                                b_cell.fill = PatternFill(fill_type=None)
+                                b_cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
                 # Try to attach default template image if present
                 try:
                     from openpyxl.drawing.image import Image as XLImage
