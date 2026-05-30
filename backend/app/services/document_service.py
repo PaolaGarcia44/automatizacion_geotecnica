@@ -38,6 +38,7 @@ class DocumentService:
         project_id: str,
         project_value,
         fecha_value,
+        fecha_original=None,
         perforaciones: Optional[List[Dict]] = None,
     ) -> Path:
         output_name = f"{project_id}_{source_template.stem}.xlsx"
@@ -84,6 +85,13 @@ class DocumentService:
                 handled_rows.update(range(row_number, row_end + 1))
 
             return ranges
+
+        def _clear_cell_if_writable(ws, cell_ref: str):
+            cell = ws[cell_ref]
+            if isinstance(cell, MergedCell):
+                return
+            cell.value = None
+            cell.fill = PatternFill(fill_type=None)
 
         def _apply_profile_j_formulas(ws):
             for start_row, end_row in _profile_block_ranges(ws):
@@ -237,18 +245,26 @@ class DocumentService:
                         break
 
                 for row_number in range(current_row, max_depth_row + 1):
-                    worksheet[f"B{row_number}"] = None
-                    worksheet[f"D{row_number}"] = None
+                    _clear_cell_if_writable(worksheet, f"B{row_number}")
+                    _clear_cell_if_writable(worksheet, f"D{row_number}")
 
                 # If there are more capas than visible depth rows, collapse the extras into the last layer.
-                worksheet["M1"] = fecha_value
-                worksheet["N1"] = None
+                if "15M" in profile_name or "25M" in profile_name:
+                    worksheet["M1"] = "FECHA"
+                    worksheet["N1"] = fecha_value
+                else:
+                    worksheet["M1"] = fecha_value
+                    worksheet["N1"] = None
             else:
                 for row_number in depth_rows:
-                    worksheet[f"B{row_number}"] = None
-                    worksheet[f"D{row_number}"] = None
-                worksheet["M1"] = fecha_value
-                worksheet["N1"] = None
+                    _clear_cell_if_writable(worksheet, f"B{row_number}")
+                    _clear_cell_if_writable(worksheet, f"D{row_number}")
+                if "15M" in profile_name or "25M" in profile_name:
+                    worksheet["M1"] = "FECHA"
+                    worksheet["N1"] = fecha_value
+                else:
+                    worksheet["M1"] = fecha_value
+                    worksheet["N1"] = None
         else:
             worksheet["N1"] = fecha_value
 
@@ -431,6 +447,7 @@ class DocumentService:
                                 project_id=project_id,
                                 project_value=proyecto_upper,
                                 fecha_value=excel_data.get("fecha_registro"),
+                                fecha_original=excel_data.get("fecha_registro_original"),
                                 perforaciones=default_perforaciones,
                             )
                             output_files.append(perfil_generated_file)

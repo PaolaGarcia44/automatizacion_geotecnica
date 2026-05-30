@@ -521,10 +521,28 @@ class ExcelService:
                 cliente_value = self._format_client(data.get('cliente'))
                 fecha_original_value = data.get('fecha_registro_original', data.get('fecha_registro'))
                 fecha_plus_20_value = data.get('fecha_registro')
+                laboratorio_layer_map = {'4': 0, '5': 1, '6': 2, '7': 3}
+                layer_index = laboratorio_layer_map.get(str(template_id))
+                selected_layer = (perforaciones or [])[layer_index] if layer_index is not None and len(perforaciones or []) > layer_index else None
+                layer_type_text = None
+                if selected_layer:
+                    layer_type_text = self._clean_soil_text(
+                        selected_layer.get('tipo_suelo_principal'),
+                        selected_layer.get('color_predominante'),
+                    )
+                    if not layer_type_text:
+                        layer_type_text = self._clean_soil_text(
+                            selected_layer.get('descripcion_suelo'),
+                            selected_layer.get('color_predominante'),
+                        )
+                    if layer_type_text:
+                        layer_type_text = layer_type_text.upper()
                 self._set_cell_value(target_sheet, 'H2', project_value)
                 self._set_cell_value(target_sheet, 'Q4', fecha_original_value)
                 self._set_cell_value(target_sheet, 'L2', fecha_plus_20_value)
                 self._set_cell_value(target_sheet, 'E5', cliente_value)
+                if layer_type_text:
+                    self._set_cell_value(target_sheet, 'E6', layer_type_text)
 
                 random_values = random.sample(range(10, 100), 3)
                 for cell_ref, value in zip(('K13', 'L13', 'M13'), random_values):
