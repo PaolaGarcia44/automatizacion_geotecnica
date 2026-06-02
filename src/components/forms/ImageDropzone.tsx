@@ -128,6 +128,7 @@ export function ImageDropzone({
         <input
           type='file'
           multiple
+          {...({ webkitdirectory: '', directory: '' } as any)}
           accept='image/*'
           onChange={handleInputChange}
           className='hidden'
@@ -141,7 +142,7 @@ export function ImageDropzone({
           <Upload className='h-8 w-8 text-secondary-400' />
           <div className='text-center'>
             <p className='text-sm font-medium text-secondary-900'>
-              Arrastra imágenes aquí o haz clic para seleccionar
+              Arrastra una carpeta aquí o haz clic para seleccionarla
             </p>
             <p className='text-xs text-secondary-500 mt-1'>
               Máximo {maxFiles} imágenes, {maxSizePerFile}MB cada una

@@ -89,17 +89,30 @@ function formatApiError(detail: unknown): string {
  * Envía datos del formulario y recibe Excel modificado
  */
 export const generateDocuments = async (
-  request: DocumentGenerationRequest
+  request: DocumentGenerationRequest,
+  images?: File[]
 ): Promise<DocumentGenerationResponse> => {
   try {
     console.log('📤 Enviando solicitud al backend...', request)
 
+    // Use multipart/form-data when images are present or always for consistency
+    const form = new FormData()
+    form.append('proyecto_ubicacion', request.proyecto_ubicacion)
+    if (request.cliente) form.append('cliente', request.cliente)
+    form.append('fecha_registro', request.fecha_registro)
+    form.append('pisos', String(request.pisos))
+    form.append('perforaciones', JSON.stringify(request.perforaciones ?? []))
+    form.append('parametros', JSON.stringify((request as any).parametros ?? []))
+    if (request.template_id) form.append('template_id', request.template_id)
+    if (request.template_ids) form.append('template_ids', JSON.stringify(request.template_ids))
+
+    if (images && images.length) {
+      images.forEach((file) => form.append('files', file, file.name))
+    }
+
     const response = await fetch(`${API_URL}/api/generate`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
+      body: form,
     })
 
     if (!response.ok) {

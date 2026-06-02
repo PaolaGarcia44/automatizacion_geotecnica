@@ -22,6 +22,7 @@ class TemplateService:
         """Obtiene la lista de plantillas Excel disponibles"""
         try:
             templates = [f.name for f in self.excel_templates_dir.glob("*.xlsx")]
+            templates.extend(f.name for f in self.excel_templates_dir.glob("*.xls"))
             logger.info(f"Plantillas Excel encontradas: {len(templates)}")
             return templates
         except Exception as e:

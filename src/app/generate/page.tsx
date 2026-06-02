@@ -98,6 +98,7 @@ export default function GenerarPage() {
   const [fechaRegistro, setFechaRegistro] = useState('')
   const [pisos, setPisos] = useState<number | ''>('')
   const [soilLayers, setSoilLayers] = useState<SoilLayerForm[]>(DEFAULT_SOIL_LAYERS)
+  const [images, setImages] = useState<File[] | null>(null)
 
   const addSoilLayer = () => {
     setSoilLayers((prev) => [...prev, { profundidad_z: '', tipo_suelo_principal: '', color_predominante: '' }])
@@ -160,7 +161,7 @@ export default function GenerarPage() {
         perforaciones,
       }
 
-      const response = await generateDocuments(payload)
+      const response = await generateDocuments(payload, images ?? undefined)
 
       if (response.success) {
         setSuccessMessage(`✅ Documentos generados exitosamente!\nID: ${response.project_id}`)
@@ -202,6 +203,44 @@ export default function GenerarPage() {
               </CardContent>
             </Card>
           )}
+
+          <Card className='border-gray-200 shadow-lg shadow-slate-200/50 overflow-hidden'>
+            <CardHeader className='border-b border-gray-200 bg-slate-50/80'>
+              <CardTitle className='text-center text-lg'>Imágenes</CardTitle>
+            </CardHeader>
+            <CardContent className='p-6 sm:p-8'>
+              <p className='text-sm text-slate-500 mb-4'>
+                Selecciona una carpeta con las imágenes del sondeo. Se incluirán en la carpeta ZIP dentro de la carpeta <em>imagenes</em>.
+              </p>
+
+              <div className='flex flex-col gap-3'>
+                <input
+                  id='imagenes-carpeta'
+                  type='file'
+                  multiple
+                  accept='image/*'
+                  {...({ webkitdirectory: '', directory: '' } as any)}
+                  onChange={(e) => {
+                    const files = e.target.files
+                    if (!files) return
+                    setImages(Array.from(files))
+                  }}
+                  className='sr-only'
+                />
+
+                <label
+                  htmlFor='imagenes-carpeta'
+                  className='inline-flex w-fit cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50'
+                >
+                  Seleccionar carpeta de imágenes
+                </label>
+
+                <p className='text-sm text-slate-600'>
+                  {images?.length ? `${images.length} imágenes seleccionadas` : 'Ninguna carpeta seleccionada aún'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
           <Card className='border-gray-200 shadow-xl shadow-slate-200/60 overflow-hidden'>
             <CardHeader className='border-b border-gray-200 bg-gradient-to-r from-slate-50 via-white to-emerald-50'>
@@ -384,12 +423,12 @@ export default function GenerarPage() {
               className='h-12 min-w-56 gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-slate-900 px-6 text-white shadow-lg shadow-blue-200 hover:from-blue-500 hover:to-slate-800'
               title='Genera una carpeta ZIP con varios Excel según el número de pisos'
             >
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Generar carpeta ZIP
-              </>
+                <span className='inline-flex items-center gap-2'>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Generar carpeta ZIP
+                </span>
             </Button>
           </div>
         </div>

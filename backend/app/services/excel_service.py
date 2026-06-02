@@ -7,7 +7,7 @@ import random
 import re
 import shutil
 import unicodedata
-from datetime import date
+from datetime import date, datetime
 from copy import copy
 from pathlib import Path
 from typing import List, Optional
@@ -59,11 +59,110 @@ class ExcelService:
 
     def _copy_template(self, template_id: str, project_id: str) -> Path:
         template_path = self._get_template_path(template_id)
-        output_filename = f"{project_id}_template_{template_id}.xlsx"
+        output_filename = f"{project_id}_template_{template_id}{template_path.suffix}"
         output_path = self.generated_dir / output_filename
         shutil.copy2(template_path, output_path)
         logger.info("Plantilla copiada: %s -> %s", template_path, output_path)
         return output_path
+
+    def _get_legacy_n_campo_values(self, pisos_value=None) -> List[tuple]:
+        source_template = self.templates_dir / "plantilla_1.xlsx"
+        if not source_template.exists():
+            return []
+
+        try:
+            workbook = load_workbook(source_template, data_only=False)
+            worksheet = workbook.active
+            values = []
+            for row_number in range(10, 17):
+                cell = worksheet[f"F{row_number}"]
+                if cell.value in (None, ""):
+                    continue
+                values.append((cell.value, cell.number_format or "General"))
+
+            try:
+                pisos_int = int(pisos_value or 0)
+            except Exception:
+                pisos_int = 0
+            if pisos_int > 0:
+                values = values[:min(pisos_int, len(values))]
+
+            return values
+        except Exception:
+            logger.debug("No se pudieron leer los valores de N\u00b0 CAMPO desde plantilla_1.xlsx", exc_info=True)
+            return []
+
+    def _fill_legacy_xls_template(
+        self,
+        workbook_path: Path,
+        project_value,
+        fecha_value,
+        e5_value,
+        n_campo_values: Optional[List[tuple]] = None,
+    ) -> None:
+        try:
+            import pythoncom
+            import win32com.client
+        except ImportError as exc:
+            # If pywin32 is not available, log a warning and skip editing the
+            # legacy .xls file so the generation flow can continue and the
+            # unmodified template copy will still be included in the ZIP. The
+            # frontend will receive a friendly message if editing is required
+            # for the .xls files to be pre-populated.
+            logger.warning("pywin32 no instalado: se omitirá edición de plantilla .xls (%s)", workbook_path)
+            return
+
+        excel_app = None
+        workbook = None
+        pythoncom.CoInitialize()
+        try:
+            excel_app = win32com.client.DispatchEx("Excel.Application")
+            excel_app.Visible = False
+            excel_app.DisplayAlerts = False
+            workbook = excel_app.Workbooks.Open(str(workbook_path))
+            worksheet = workbook.Worksheets(1)
+
+            project_text = str(project_value or "").strip().upper()
+            if project_text:
+                worksheet.Range("B3").Value = project_text
+
+            if fecha_value is not None:
+                if isinstance(fecha_value, date) and not isinstance(fecha_value, datetime):
+                    from datetime import datetime as _dt
+                    fecha_value = _dt.combine(fecha_value, _dt.min.time())
+                elif isinstance(fecha_value, datetime):
+                    fecha_value = fecha_value
+                else:
+                    try:
+                        fecha_value = datetime.fromisoformat(str(fecha_value))
+                    except Exception:
+                        fecha_value = str(fecha_value)
+                worksheet.Range("N3").NumberFormat = "yyyy-mm-dd"
+                worksheet.Range("N3").Value = fecha_value
+
+            if e5_value is not None:
+                worksheet.Range("E5").Value = e5_value
+
+            if n_campo_values:
+                for offset, (value, number_format) in enumerate(n_campo_values, start=13):
+                    cell = worksheet.Range(f"T{offset}")
+                    cell.Value = value
+                    if number_format:
+                        cell.NumberFormat = number_format
+
+            workbook.Save()
+        finally:
+            if workbook is not None:
+                try:
+                    workbook.Close(SaveChanges=False)
+                except Exception:
+                    logger.debug("No se pudo cerrar el libro .xls de forma limpia", exc_info=True)
+            if excel_app is not None:
+                try:
+                    excel_app.Quit()
+                except Exception:
+                    logger.debug("No se pudo cerrar la instancia de Excel", exc_info=True)
+            pythoncom.CoUninitialize()
 
     def _set_cell_value(self, worksheet, cell_ref: str, value):
         if ":" in cell_ref:
@@ -682,6 +781,32 @@ class ExcelService:
             logger.info("Excel generado exitosamente: %s", work_file)
             return work_file
 
+        # Include template '15' as legacy (.xls) because it maps to P-3.xls
+        # which is an old Excel BIFF file; attempting to treat it as a ZIP
+        # will raise "File is not a zip file". Keep legacy handling here.
+        legacy_xls_template_ids = {'12', '13', '14', '15'}
+        if str(template_id) in legacy_xls_template_ids:
+            try:
+                fecha_value = data.get('fecha_registro', data.get('fecha_registro_original'))
+                project_value = f"PROYECTO: {data.get('proyecto_ubicacion', '')}".strip()
+                try:
+                    pisos_int = int(data.get('pisos') or 0)
+                except Exception:
+                    pisos_int = 0
+                e5_value = 6 if pisos_int <= 3 else 15
+                n_campo_values = self._get_legacy_n_campo_values(data.get('pisos'))
+                self._fill_legacy_xls_template(work_file, project_value, fecha_value, e5_value, n_campo_values)
+            except Exception:
+                try:
+                    if work_file.exists():
+                        work_file.unlink()
+                except Exception:
+                    logger.debug("No se pudo limpiar el archivo .xls temporal", exc_info=True)
+                raise
+
+            logger.info("Excel generado exitosamente: %s", work_file)
+            return work_file
+
         sheet_targets = self._resolve_sheet_targets(work_file)
         sheet_updates = {}
 
@@ -889,10 +1014,11 @@ class ExcelService:
                     q_segments = [(s[0], s[1], s[2]) for s in coalesced]
 
                     for merged_range in list(sheet_obj.merged_cells.ranges):
-                        if merged_range.min_col <= 17 <= merged_range.max_col:
+                        # remove existing merges that overlap the soil column(s)
+                        if (merged_range.min_col <= 17 <= merged_range.max_col) or (merged_range.min_col <= 9 <= merged_range.max_col):
                             if merged_range.max_row >= start_row and merged_range.min_row <= f_end:
                                 start_cell = merged_range.start_cell.coordinate
-                                if start_cell.startswith('Q'):
+                                if start_cell.startswith('Q') or start_cell.startswith('I'):
                                     try:
                                         sheet_obj.unmerge_cells(str(merged_range))
                                     except Exception:
@@ -900,20 +1026,29 @@ class ExcelService:
 
                     for row_start, row_end, layer in q_segments:
                         q_range = f"Q{row_start}" if row_start == row_end else f"Q{row_start}:Q{row_end}"
+                        i_range = f"I{row_start}" if row_start == row_end else f"I{row_start}:I{row_end}"
                         if row_start != row_end:
                             try:
                                 sheet_obj.merge_cells(q_range)
                             except Exception:
                                 pass
+                            try:
+                                sheet_obj.merge_cells(i_range)
+                            except Exception:
+                                pass
 
                         q_anchor = sheet_obj[f'Q{row_start}']
-                        q_anchor.value = build_soil_text(layer)
+                        i_anchor = sheet_obj[f'I{row_start}']
+                        text_value = build_soil_text(layer)
+                        q_anchor.value = text_value
+                        i_anchor.value = text_value
                         fill, font_color = self._soil_style_from_color(layer.get('color_predominante'))
-                        q_anchor.fill = fill
-                        q_anchor.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                        soil_font = copy(q_anchor.font)
-                        soil_font.color = font_color
-                        q_anchor.font = soil_font
+                        for anchor in (q_anchor, i_anchor):
+                            anchor.fill = fill
+                            anchor.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                            soil_font = copy(anchor.font)
+                            soil_font.color = font_color
+                            anchor.font = soil_font
 
                         if str(template_id) == "1":
                             gamma_value = layer.get('gamma')

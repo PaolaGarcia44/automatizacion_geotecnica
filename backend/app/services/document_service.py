@@ -32,6 +32,31 @@ class DocumentService:
         text = re.sub(r"[^A-Za-z0-9]+", "_", text).strip("_")
         return text or fallback
 
+    def _sanitize_archive_name(self, name: str, max_length: int = 100) -> str:
+        if not name:
+            return name
+        # preserve extension
+        try:
+            parts = name.rsplit('.', 1)
+            base = parts[0]
+            ext = '.' + parts[1] if len(parts) == 2 else ''
+        except Exception:
+            base, ext = name, ''
+
+        # normalize and remove non-ascii
+        base_norm = unicodedata.normalize('NFD', base).encode('ascii', 'ignore').decode('ascii')
+        # replace problematic chars with underscores
+        base_norm = re.sub(r'[^A-Za-z0-9\-_ ]+', '', base_norm).strip()
+        base_norm = re.sub(r'\s+', ' ', base_norm)
+        # shorten if necessary
+        if len(base_norm) > max_length:
+            base_norm = base_norm[:max_length].rstrip()
+        # replace spaces with single spaces (keep readable) and finally ensure no leading/trailing
+        safe_name = base_norm.strip()
+        # restore a compact filename
+        safe_name = safe_name[:max_length]
+        return f"{safe_name}{ext}"
+
     def _prepare_profile_file(
         self,
         source_template: Path,
@@ -280,15 +305,19 @@ class DocumentService:
         proyecto_ubicacion: str,
         cliente: Optional[str],
         fecha_registro,
+        sondeo: Optional[str],
         pisos: int,
         perforaciones: Optional[List[Dict]] = None,
         parametros: Optional[List[Dict]] = None,
         template_id: Optional[str] = None,
         template_ids: Optional[List[str]] = None,
+        images_dir: Optional[Path] = None,
+        project_id: Optional[str] = None,
     ) -> Dict:
         """Generate the Excel file from the selected template."""        
         try:
-            project_id = str(uuid4())[:8]
+            if not project_id:
+                project_id = str(uuid4())[:8]
             timestamp = datetime.now().isoformat()
 
             perforaciones_to_use = perforaciones or []
@@ -377,6 +406,7 @@ class DocumentService:
                 "fecha_registro": fecha_c7 if fecha_c7 is not None else fecha_registro,
                 "fecha_registro_original": fecha_obj if fecha_obj is not None else fecha_registro,
                 "cliente": cliente,
+                "sondeo": sondeo,
                 "pisos": nPisos,
                 # static label required by UI: A5 should read 'Parámetro:'
                 "parametro_label": "Parámetro:",
@@ -398,8 +428,8 @@ class DocumentService:
                     perfil_template_name = 'PERFIL DEL SUELO 25M.xlsx'
                 perfil_template_path = self.excel_service.templates_dir / perfil_template_name
 
-                client_slug = self._slugify_filename(str(cliente or '').strip(), 'cliente')
-                project_slug = self._slugify_filename(proyecto_upper, 'proyecto')
+                client_slug = self._slugify_filename(str(cliente or '').strip(), 'cliente')[:30]
+                project_slug = self._slugify_filename(proyecto_upper, 'proyecto')[:30]
                 zip_base_name = f"{client_slug} - {project_slug}.zip"
                 zip_path = self.excel_service.generated_dir / zip_base_name
 
@@ -408,7 +438,16 @@ class DocumentService:
                 perfil_error = None
                 perfil_generated_file = None
                 asentamientos_template_ids = ['10', '11']
-                batch_templates_with_asentamientos = [*batch_templates, *asentamientos_template_ids]
+                p_template_entries = [
+                    ('12', 'P-1.xls', 'P-1'),
+                    ('13', 'P-2.xls', 'P-2'),
+                    ('14', 'P-3.xls', 'P-3'),
+                ]
+                if nPisos > 3:
+                    p_template_entries.append(('15', 'P-4.xls', 'P-4'))
+
+                # List of all template ids included in the ZIP (for metadata)
+                batch_templates_with_asentamientos = list(batch_templates) + list(asentamientos_template_ids) + [str(tpl_id) for tpl_id, _, _ in p_template_entries]
 
                 with ZipFile(zip_path, 'w', compression=ZIP_DEFLATED) as zip_file:
                     for current_template in batch_templates:
@@ -441,7 +480,8 @@ class DocumentService:
                                 settings.TEMPLATES_CONFIG.get(str(current_template), generated_file.name),
                             )
 
-                        zip_file.write(generated_file, arcname=archive_name)
+                        archive_name_safe = self._sanitize_archive_name(archive_name)
+                        zip_file.write(generated_file, arcname=archive_name_safe)
 
                     asentamientos_template_names = {
                         '10': 'ASENTAMIENTOS ZAPATAS 300.xlsx',
@@ -456,7 +496,21 @@ class DocumentService:
                             parametros=parametros or [],
                         )
                         output_files.append(generated_file)
-                        zip_file.write(generated_file, arcname=asentamientos_template_names[current_template])
+                        arcname = asentamientos_template_names[current_template]
+                        zip_file.write(generated_file, arcname=self._sanitize_archive_name(arcname))
+
+                    for current_template, archive_name, sondeo_label in p_template_entries:
+                        excel_data_for_template = dict(excel_data)
+                        excel_data_for_template['sondeo'] = sondeo_label
+                        generated_file = self.excel_service.generate_excel(
+                            template_id=current_template,
+                            project_id=project_id,
+                            data=excel_data_for_template,
+                            perforaciones=default_perforaciones,
+                            parametros=parametros or [],
+                        )
+                        output_files.append(generated_file)
+                        zip_file.write(generated_file, arcname=self._sanitize_archive_name(archive_name))
 
                     if perfil_template_path.exists():
                         try:
@@ -469,7 +523,7 @@ class DocumentService:
                                 perforaciones=default_perforaciones,
                             )
                             output_files.append(perfil_generated_file)
-                            zip_file.write(perfil_generated_file, arcname=perfil_template_name)
+                            zip_file.write(perfil_generated_file, arcname=self._sanitize_archive_name(perfil_template_name))
                             perfil_added = True
                         except PermissionError:
                             perfil_error = f"No se pudo agregar el perfil de suelo requerido ({perfil_template_name}) porque está abierto en Excel: {perfil_template_path}"
@@ -480,6 +534,16 @@ class DocumentService:
                     else:
                         perfil_error = f"No se encontró la plantilla de perfil de suelo requerida: {perfil_template_path}"
                         logger.warning(perfil_error)
+
+                    # Include uploaded images in a subfolder inside the ZIP if present
+                    try:
+                        if images_dir and images_dir.exists():
+                            for img in sorted(images_dir.iterdir()):
+                                if img.is_file():
+                                    zip_file.write(img, arcname=f"imagenes/{img.name}")
+                                    output_files.append(img)
+                    except Exception:
+                        logger.debug("No se pudieron agregar imágenes al ZIP", exc_info=True)
 
                 if not perfil_added:
                     raise RuntimeError(perfil_error or f"No se pudo incluir el perfil de suelo requerido: {perfil_template_name}")
@@ -519,7 +583,7 @@ class DocumentService:
             }
 
         except Exception as e:
-            logger.error("Error al generar documentos: %s", str(e))
+            logger.exception("Error al generar documentos: %s", str(e))
             return {
                 "success": False,
                 "message": f"Error al generar documentos: {str(e)}",
