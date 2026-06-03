@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation'
 import {
   ClipboardList,
   Clock,
-  Zap,
   Menu,
   ChevronLeft,
 } from 'lucide-react'
@@ -26,12 +25,12 @@ const navItems = [
     icon: Clock,
     description: 'Historial de Proyectos',
   },
-  {
-    title: 'IA',
-    href: '/ai',
-    icon: Zap,
-    description: 'Asistente IA',
-  },
+  // {
+  //   title: 'IA',
+  //   href: '/ai',
+  //   icon: Zap,
+  //   description: 'Asistente IA',
+  // },
 ]
 
 export function Sidebar() {
@@ -119,7 +118,7 @@ export function Sidebar() {
       <div className='absolute bottom-0 left-0 right-0 border-t border-secondary-200 bg-gradient-to-t from-secondary-50 to-transparent p-4'>
         {!isCollapsed && (
           <p className='text-xs text-secondary-500'>
-            v1.0.0 — Frontend SaaS
+            v1.0.0 — AutoGeo
           </p>
         )}
       </div>
