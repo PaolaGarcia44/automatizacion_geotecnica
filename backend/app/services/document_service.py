@@ -8,6 +8,7 @@ from copy import copy
 import re
 import shutil
 import unicodedata
+from urllib.parse import quote
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 from openpyxl import load_workbook
@@ -17,6 +18,7 @@ from openpyxl.styles import Alignment, PatternFill
 
 from app.core.config import settings
 from app.services.excel_service import excel_service
+from app.services.word_service import word_service
 
 logger = logging.getLogger(__name__)
 
@@ -535,6 +537,17 @@ class DocumentService:
                         perfil_error = f"No se encontró la plantilla de perfil de suelo requerida: {perfil_template_path}"
                         logger.warning(perfil_error)
 
+                    informe_file, informe_archive_name = word_service.generate_informe(
+                        project_id=project_id,
+                        proyecto_ubicacion=proyecto_upper,
+                        fecha_registro=excel_data.get("fecha_registro_original") or fecha_registro,
+                    )
+                    output_files.append(informe_file)
+                    zip_file.write(
+                        informe_file,
+                        arcname=self._sanitize_archive_name(informe_archive_name),
+                    )
+
                     # Include uploaded images in a subfolder inside the ZIP if present
                     try:
                         if images_dir and images_dir.exists():
@@ -553,7 +566,7 @@ class DocumentService:
                     "message": "Documentos generados exitosamente en paquete ZIP",
                     "project_id": project_id,
                     "files": [str(file_path) for file_path in output_files] + [str(zip_path)],
-                    "download_url": f"/api/download/{zip_path.name}",
+                    "download_url": f"/api/download/{quote(zip_path.name)}",
                     "timestamp": timestamp,
                     "template_id": ",".join(batch_templates_with_asentamientos),
                     "proyecto_ubicacion": proyecto_upper,
@@ -576,7 +589,7 @@ class DocumentService:
                 "message": "Documentos generados exitosamente",
                 "project_id": project_id,
                 "files": [str(excel_file)],
-                "download_url": f"/api/download/{excel_file.name}",
+                "download_url": f"/api/download/{quote(excel_file.name)}",
                 "timestamp": timestamp,
                 "template_id": selected_template,
                 "proyecto_ubicacion": proyecto_upper,
