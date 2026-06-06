@@ -43,7 +43,6 @@ class DocumentGenerationRequest(BaseModel):
     perforaciones: List[PerforacionData] = Field(default_factory=list)
     parametros: List[ParametroRangoData] = Field(default_factory=list)
     template_ids: Optional[List[str]] = Field(None, description="Plantillas a generar en lote")
-    custom_soil_types: Optional[List[str]] = Field(default_factory=list, description="Tipos de suelo personalizados agregados por el usuario")
 
     model_config = {
         "json_schema_extra": {

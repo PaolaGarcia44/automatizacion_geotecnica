@@ -13,15 +13,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 // Minimal form: Proyecto, Fecha y Pisos
 
 const SOIL_TYPE_OPTIONS = [
-  // Capas vegetales y materia orgánica
   'Capa vegetal con raíces y material orgánico',
   'Capa vegetal húmeda con presencia de raíces finas',
   'Material orgánico color negro de consistencia blanda',
-  'Capa de turba oscura con alto contenido orgánico',
-  'Materia orgánica descompuesta de color marrón',
-  'Suelo orgánico con presencia de raicillas',
-  
-  // Arcillas y variantes
   'Arcilla limosa color café oscuro de consistencia media',
   'Arcilla limosa color café rojizo de consistencia firme',
   'Arcilla limosa húmeda de color gris oscuro',
@@ -32,17 +26,6 @@ const SOIL_TYPE_OPTIONS = [
   'Arcilla firme parcialmente meteorizada',
   'Arcilla blanda con vetas limosas',
   'Arcilla gris azulosa de consistencia firme',
-  'Arcilla con presencia de óxidos de hierro',
-  'Arcilla roja de alta plasticidad',
-  'Arcilla verdosa con laminaciones',
-  'Arcilla compacta color gris claro',
-  'Arcilla consolidada con fracturas minerales',
-  'Arcilla expansiva de color rojo oscuro',
-  'Arcilla café amarillenta de consistencia rígida',
-  'Arcilla gris con vetas de arena',
-  'Arcilla plástica con fragmentos de mica',
-  
-  // Arenas y variantes
   'Arena limosa color amarillo café medianamente compacta',
   'Arena limosa fina de color beige claro',
   'Arena limosa húmeda con contenido de grava fina',
@@ -55,53 +38,18 @@ const SOIL_TYPE_OPTIONS = [
   'Arena arcillosa húmeda con fragmentos de roca',
   'Arena media compacta color beige',
   'Arena suelta con contenido limoso',
-  'Arena fina beige con grava dispersa',
-  'Arena limosa compacta de color amarillo oscuro',
-  'Arena arcillosa medianamente compacta',
-  'Arena fina con presencia de ceniza volcánica',
-  'Arena muy fina color gris claro',
-  'Arena con mica plateada',
-  'Arena rojiza con óxidos de hierro',
-  'Arena cuarcítica blanca compacta',
-  'Arena negra con minerales magnéticos',
-  'Arena silícea medianamente densa',
-  
-  // Limos y variantes
   'Limo arenoso color gris amarillento',
   'Limo arenoso húmedo de baja plasticidad',
   'Limo arcilloso color café claro',
   'Limo orgánico húmedo color negro',
   'Limo fino saturado de color gris oscuro',
-  'Limo color marrón claro de baja compacidad',
-  'Limo arenoso con mica fina',
-  'Material limo arcilloso parcialmente saturado',
-  'Suelo limo arenoso de baja plasticidad',
-  
-  // Gravas y variantes
   'Grava arenosa con cantos rodados pequeños',
   'Grava limosa de compacidad media',
   'Grava fina mezclada con arena amarilla',
-  'Grava gruesa subangular color café',
-  'Grava con matriz arenosa color gris',
-  'Grava subredondeada con contenido de limo',
-  'Grava bien gradada color marrón oscuro',
-  'Grava de cantos rodados con arena fina',
-  'Grava arenosa compacta color beige',
-  'Grava limosa con contenido de arcilla',
-  
-  // Materiales granulares y rellenos
   'Material granular húmedo y compacto',
-  'Material granular con humedad natural moderada',
   'Material aluvial compuesto por arena y grava',
   'Material de relleno heterogéneo con fragmentos pétreos',
   'Material de relleno con presencia de escombros',
-  'Material de relleno color café con residuos',
-  'Material de relleno compactado regularmente',
-  'Material granular sin tratar color gris',
-  'Relleno de demolición con ladrillo y concreto',
-  'Relleno sanitario compactado',
-  
-  // Rocas y material meteorizado
   'Suelo residual de roca meteorizada',
   'Suelo residual arenoso de origen ígneo',
   'Suelo residual arcilloso color naranja',
@@ -110,45 +58,22 @@ const SOIL_TYPE_OPTIONS = [
   'Roca meteorizada color café amarillento',
   'Roca fracturada parcialmente meteorizada',
   'Roca alterada con presencia de humedad',
-  'Roca gneis parcialmente descompuesta',
-  'Roca esquisto descompuesta color gris',
-  'Roca granito meteorizado con feldespato',
-  'Roca arenisca descompuesta color rojizo',
-  'Material residual compacto con gravas finas',
-  'Saprolito de roca cristalina',
-  'Roca sedimentaria meteorizada',
-  
-  // Cenizas volcánicas
   'Ceniza volcánica mezclada con arena fina',
-  'Ceniza volcánica pura color gris claro',
-  'Ceniza volcánica consolidada',
-  'Ceniza volcánica con presencia de pómez',
-  
-  // Suelos especiales
-  'Suelo con alto contenido de sílice',
-  'Suelo con presencia de calcita',
-  'Suelo con cementación débil',
-  'Suelo con contenido de sal marina',
-  'Suelo expansivo de color rojo',
+  'Arena fina con presencia de ceniza volcánica',
+  'Material residual arcilloso de color rojizo',
+  'Arena limosa compacta de color amarillo oscuro',
+  'Arcilla con presencia de óxidos de hierro',
+  'Suelo limo arenoso de baja plasticidad',
+  'Arena arcillosa medianamente compacta',
+  'Material granular con humedad natural moderada',
+  'Arcilla húmeda con fragmentos meteorizados',
+  'Arena fina beige con grava dispersa',
+  'Arcilla café amarillenta de consistencia rígida',
+  'Material limo arcilloso parcialmente saturado',
+  'Suelo residual compacto con gravas finas',
 ]
 
-const SOIL_COLOR_OPTIONS = [
-  'Beige',
-  'Café',
-  'Café oscuro',
-  'Amarillo',
-  'Amarillo claro',
-  'Amarillo oscuro',
-  'Rojizo',
-  'Naranja',
-  'Naranja oscuro',
-  'Blanco',
-  'Gris claro',
-  'Gris oscuro',
-  'Verde',
-  'Marrón',
-  'Marrón oscuro',
-]
+const SOIL_COLOR_OPTIONS = ['Beige', 'Café', 'Amarillo', 'Rojizo', 'Blanco', 'Gris claro', 'Naranja', 'Verde']
 
 interface SoilLayerForm {
   profundidad_z: string
@@ -173,8 +98,6 @@ export default function GenerarPage() {
   const [fechaRegistro, setFechaRegistro] = useState('')
   const [pisos, setPisos] = useState<number | ''>('')
   const [soilLayers, setSoilLayers] = useState<SoilLayerForm[]>(DEFAULT_SOIL_LAYERS)
-  const [customSoilType, setCustomSoilType] = useState('')
-  const [customSoilTypes, setCustomSoilTypes] = useState<string[]>([])
   const [images, setImages] = useState<File[] | null>(null)
 
   const addSoilLayer = () => {
@@ -185,17 +108,7 @@ export default function GenerarPage() {
     setSoilLayers((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const addCustomSoilType = () => {
-    const trimmed = customSoilType.trim()
-    if (trimmed && !customSoilTypes.includes(trimmed)) {
-      setCustomSoilTypes((prev) => [...prev, trimmed])
-      setCustomSoilType('')
-    }
-  }
-
-  const removeCustomSoilType = (index: number) => {
-    setCustomSoilTypes((prev) => prev.filter((_, i) => i !== index))
-  }
+  // helper removed: this minimal form doesn't parse numeric tables
 
   const handleSubmit = async () => {
     if (!proyectoUbicacion.trim() || !fechaRegistro) {
@@ -246,7 +159,6 @@ export default function GenerarPage() {
         pisos: nPisos,
         template_ids: nPisos <= 3 ? ['4', '5', '6'] : ['4', '5', '6', '7'],
         perforaciones,
-        custom_soil_types: customSoilTypes,
       }
 
       const response = await generateDocuments(payload, images ?? undefined)
@@ -390,55 +302,6 @@ export default function GenerarPage() {
 
           <Card className='border-slate-200/80 bg-white/90 shadow-lg shadow-slate-200/50 overflow-hidden'>
             <CardHeader className='border-b border-slate-200 bg-slate-50/80'>
-              <CardTitle className='text-center text-lg'>Tipos de suelo personalizados</CardTitle>
-            </CardHeader>
-            <CardContent className='space-y-4 p-6 sm:p-8'>
-              <p className='text-center text-sm text-slate-500'>Agrega tipos de suelo adicionales no incluidos en la lista predeterminada.</p>
-              <div className='flex gap-2'>
-                <Input
-                  placeholder='Ej: Suelo arenoso con grava gruesa'
-                  value={customSoilType}
-                  onChange={(e) => setCustomSoilType(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      addCustomSoilType()
-                    }
-                  }}
-                  className='h-12 rounded-xl border-slate-200 bg-white shadow-sm'
-                />
-                <Button 
-                  onClick={addCustomSoilType} 
-                  className='h-12 rounded-xl bg-blue-600 text-white px-4 shadow-sm'
-                >
-                  Agregar
-                </Button>
-              </div>
-              {customSoilTypes.length > 0 && (
-                <div className='flex flex-wrap gap-2 pt-2'>
-                  {customSoilTypes.map((type, index) => (
-                    <span 
-                      key={index}
-                      className='inline-flex items-center gap-2 rounded-full bg-blue-100 px-3 py-1 text-sm text-blue-700'
-                    >
-                      {type}
-                      <button
-                        type='button'
-                        onClick={() => removeCustomSoilType(index)}
-                        className='hover:text-blue-900'
-                        aria-label='Remover'
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className='border-slate-200/80 bg-white/90 shadow-lg shadow-slate-200/50 overflow-hidden'>
-            <CardHeader className='border-b border-slate-200 bg-slate-50/80'>
               <CardTitle className='text-center text-lg'>Capas de suelo</CardTitle>
             </CardHeader>
             <CardContent className='space-y-4 p-6 sm:p-8'>
@@ -500,18 +363,9 @@ export default function GenerarPage() {
                         className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm shadow-sm outline-none transition focus:border-blue-500'
                       >
                         <option value=''>Selecciona un tipo de suelo</option>
-                        <optgroup label='Tipos predefinidos'>
-                          {SOIL_TYPE_OPTIONS.map((option) => (
-                            <option key={option} value={option}>{option}</option>
-                          ))}
-                        </optgroup>
-                        {customSoilTypes.length > 0 && (
-                          <optgroup label='Tipos personalizados'>
-                            {customSoilTypes.map((option) => (
-                              <option key={option} value={option}>{option}</option>
-                            ))}
-                          </optgroup>
-                        )}
+                        {SOIL_TYPE_OPTIONS.map((option) => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
                       </select>
                     </div>
 
