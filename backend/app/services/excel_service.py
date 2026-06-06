@@ -35,6 +35,25 @@ REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 XML_NS = "http://www.w3.org/XML/1998/namespace"
 NS = {"main": MAIN_NS, "rel": REL_NS}
 
+# Mapeo de colores para tipos de suelo (color name -> hex code)
+SOIL_COLOR_MAP = {
+    'Beige': 'F5E6D3',
+    'Café': '8B5A2B',
+    'Café oscuro': '5C3D2E',
+    'Amarillo': 'FFD700',
+    'Amarillo claro': 'FFFFE0',
+    'Amarillo oscuro': 'DAA520',
+    'Rojizo': 'CD5C5C',
+    'Naranja': 'FF8C00',
+    'Naranja oscuro': 'FF6347',
+    'Blanco': 'FFFFFF',
+    'Gris claro': 'D3D3D3',
+    'Gris oscuro': '808080',
+    'Verde': '90EE90',
+    'Marrón': 'A0522D',
+    'Marrón oscuro': '654321',
+}
+
 
 class ExcelService:
     """Service responsible for copying and filling Excel templates."""
@@ -99,6 +118,8 @@ class ExcelService:
         fecha_value,
         e5_value,
         n_campo_values: Optional[List[tuple]] = None,
+        perforaciones: Optional[List[dict]] = None,
+        pisos: Optional[int] = None,
     ) -> None:
         try:
             import pythoncom
@@ -150,6 +171,10 @@ class ExcelService:
                     if number_format:
                         cell.NumberFormat = number_format
 
+            # Populate column I with soil descriptions and apply colors
+            if perforaciones:
+                self._fill_column_i_with_colors(worksheet, perforaciones, pisos)
+
             workbook.Save()
         finally:
             if workbook is not None:
@@ -163,6 +188,108 @@ class ExcelService:
                 except Exception:
                     logger.debug("No se pudo cerrar la instancia de Excel", exc_info=True)
             pythoncom.CoUninitialize()
+
+    def _fill_column_i_with_colors(self, worksheet, perforaciones: List[dict], pisos: Optional[int] = None) -> None:
+        """Fill column I with soil descriptions and apply colors based on color_predominante."""
+        try:
+            import pythoncom
+            from win32com.client import RGB
+        except ImportError:
+            logger.warning("No se puede aplicar colores sin pywin32")
+            return
+
+        # Determine max rows based on pisos
+        if pisos is None:
+            pisos = 3
+        
+        if pisos <= 3:
+            max_rows = 6
+        elif pisos <= 10:
+            max_rows = 15
+        else:
+            max_rows = 25
+
+        logger.info(f"[COLUMN_I] Starting to fill Column I. Pisos={pisos}, Max rows={max_rows}, Total perforaciones={len(perforaciones)}")
+
+        # Try to find where Column I data actually starts by examining the template structure
+        # First, let's try to find the header "Descripción Macroscópica" to locate the correct column
+        try:
+            # Search for header in row 7
+            for col_idx in range(1, 20):  # Check columns A to S
+                cell = worksheet.Cells(7, col_idx)
+                cell_value = str(cell.Value) if cell.Value else ''
+                if 'descripción macroscópica' in cell_value.lower() or 'descripción' in cell_value.lower():
+                    logger.info(f"[COLUMN_I] Found 'Descripción' header at Column {chr(64+col_idx)}, Row 7")
+                    target_column = col_idx
+                    break
+            else:
+                # If not found, default to column I (9)
+                logger.warning("[COLUMN_I] Header 'Descripción' not found, defaulting to Column I")
+                target_column = 9  # Column I
+        except Exception as e:
+            logger.error(f"[COLUMN_I] Error searching for column header: {e}")
+            target_column = 9  # Column I
+        
+        # Column B has depths in row 8, 10, 12, ... (every 2 rows)
+        # Column I corresponds to these rows for soil descriptions
+        start_row = 8
+        
+        for idx, perf in enumerate(perforaciones):
+            if idx >= max_rows:
+                break
+            
+            # Row calculation: row 8 for first layer, row 10 for second, etc.
+            row = start_row + (idx * 2)
+            
+            # Get soil description from tipo_suelo_principal or descripcion_suelo
+            soil_type = perf.get('tipo_suelo_principal') or perf.get('descripcion_suelo', '')
+            color_name = perf.get('color_predominante', '')
+            
+            col_letter = chr(64 + target_column)  # Convert column number to letter
+            logger.info(f"[COLUMN_I] Layer {idx+1}: Writing to {col_letter}{row}")
+            logger.info(f"[COLUMN_I]   Soil Type: {soil_type[:50] if soil_type else 'EMPTY'}")
+            logger.info(f"[COLUMN_I]   Color: {color_name}")
+            
+            # Set the cell value using Cells(row, col) instead of Range to handle merged cells better
+            try:
+                cell = worksheet.Cells(row, target_column)
+                cell.Value = soil_type
+                logger.info(f"[COLUMN_I]   Successfully wrote soil type to {col_letter}{row}")
+            except Exception as e:
+                logger.error(f"[COLUMN_I]   ERROR writing to {col_letter}{row}: {e}")
+                continue
+            
+            # Apply color if color_predominante is provided
+            if color_name and color_name in SOIL_COLOR_MAP:
+                hex_color = SOIL_COLOR_MAP[color_name]
+                # Convert hex to RGB (win32com expects RGB values)
+                rgb_value = int(hex_color, 16)
+                r = (rgb_value >> 16) & 0xFF
+                g = (rgb_value >> 8) & 0xFF
+                b = rgb_value & 0xFF
+                
+                logger.info(f"[COLUMN_I]   Applying color {color_name} (hex={hex_color}, RGB={r},{g},{b})")
+                
+                try:
+                    # Apply interior color
+                    cell.Interior.Color = RGB(r, g, b)
+                    
+                    # Optionally adjust font color for better contrast
+                    # Light colors get dark text, dark colors get light text
+                    brightness = (r * 299 + g * 587 + b * 114) / 1000
+                    if brightness > 128:
+                        cell.Font.Color = RGB(0, 0, 0)  # Dark text
+                    else:
+                        cell.Font.Color = RGB(255, 255, 255)  # Light text
+                    
+                    logger.info(f"[COLUMN_I]   Color and font applied successfully")
+                except Exception as e:
+                    logger.error(f"[COLUMN_I]   ERROR applying color: {e}")
+            else:
+                if color_name:
+                    logger.warning(f"[COLUMN_I]   Color '{color_name}' not found in SOIL_COLOR_MAP")
+                else:
+                    logger.info(f"[COLUMN_I]   No color specified")
 
     def _set_cell_value(self, worksheet, cell_ref: str, value):
         if ":" in cell_ref:
@@ -795,7 +922,15 @@ class ExcelService:
                     pisos_int = 0
                 e5_value = 6 if pisos_int <= 3 else 15
                 n_campo_values = self._get_legacy_n_campo_values(data.get('pisos'))
-                self._fill_legacy_xls_template(work_file, project_value, fecha_value, e5_value, n_campo_values)
+                self._fill_legacy_xls_template(
+                    work_file, 
+                    project_value, 
+                    fecha_value, 
+                    e5_value, 
+                    n_campo_values,
+                    perforaciones=perforaciones,
+                    pisos=pisos_int
+                )
             except Exception:
                 try:
                     if work_file.exists():

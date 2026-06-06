@@ -106,13 +106,24 @@ class WordService:
             for extra_paragraph in header.paragraphs[1:]:
                 extra_paragraph.text = ""
 
+    def _replace_document_title(self, document: Document, title: str) -> None:
+        """Replace the first paragraph (title) in the document body."""
+        if document.paragraphs:
+            first_para = document.paragraphs[0]
+            if first_para.runs:
+                first_para.runs[0].text = title
+                for run in first_para.runs[1:]:
+                    run.text = ""
+            else:
+                first_para.text = title
+
     def generate_informe(
         self,
         project_id: str,
         proyecto_ubicacion: str,
         fecha_registro,
     ) -> Tuple[Path, str]:
-        """Copy the informe template, set header title, and return path + archive name."""
+        """Copy the informe template, set header title and document title, and return path + archive name."""
         template_path = self.get_informe_template_path()
         if not template_path.exists():
             raise FileNotFoundError(f"No se encontró la plantilla Word requerida: {template_path}")
@@ -126,7 +137,13 @@ class WordService:
         shutil.copy2(template_path, output_path)
 
         document = Document(output_path)
-        self._replace_header_text(document, title)
+        
+        # Use full proyecto_ubicacion for header and title
+        # Add "Estudio geotécnico" prefix if not already present
+        full_title = f"Estudio geotécnico para la construcción de {proyecto_ubicacion}"
+        
+        self._replace_header_text(document, full_title)
+        self._replace_document_title(document, full_title)
         document.save(output_path)
 
         logger.info("Informe Word generado: %s", output_path)
