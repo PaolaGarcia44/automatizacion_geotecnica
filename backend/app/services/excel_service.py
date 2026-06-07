@@ -65,31 +65,60 @@ class ExcelService:
         logger.info("Plantilla copiada: %s -> %s", template_path, output_path)
         return output_path
 
-    def _get_legacy_n_campo_values(self, pisos_value=None) -> List[tuple]:
-        source_template = self.templates_dir / "plantilla_1.xlsx"
-        if not source_template.exists():
-            return []
+    def _calculate_spt_values(self, template_id: str, use_lower: bool) -> List[str]:
+        """Calculate SPT values with toggle already applied.
+        
+        Args:
+            template_id: Template ID to get SPT values for
+            use_lower: Whether to show lower (True) or upper (False) values
+        
+        Returns:
+            List of SPT values as strings
+        """
+        # Map legacy template IDs to modern templates
+        # Template 12 (P-1.xls) → Template 1 (7 values)
+        # Template 13 (P-2.xls) → Template 2 (16 values)
+        # Template 14 (P-3.xls) → Template 3 (26 values)
+        # Template 15 (P-4.xls) → Template 3 (26 values)
+        template_mapping = {
+            '12': '1',
+            '13': '2',
+            '14': '3',
+            '15': '3',
+        }
+        effective_template_id = template_mapping.get(str(template_id), str(template_id))
+        
+        if effective_template_id == "1":
+            spt_values = [7, 8, 15, 19, 23, 26, 29]
+        elif effective_template_id == "3":
+            spt_values = [
+                13, 17, 28, 35, 40, 46, 45, 49, 50, 53, 55, 58, 60, 63,
+                65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65,
+            ]
+        elif effective_template_id == "2":
+            spt_values = [
+                15, 20, 22, 29, 35, 38, 42, 45, 48, 51, 54, 57, 59, 62, 65, 68,
+            ]
+        else:
+            spt_values = []
+        
+        # Convert to lower/upper values
+        final_values = []
+        for v in spt_values:
+            lower = max(0, v - 1)
+            upper = v
+            final_values.append(str(lower) if use_lower else str(upper))
+        
+        return final_values
 
+    def _get_legacy_n_campo_values(self, template_id: str, use_lower: bool) -> List[tuple]:
+        """Get N° CAMPO values for legacy .xls templates with toggle already applied."""
         try:
-            workbook = load_workbook(source_template, data_only=False)
-            worksheet = workbook.active
-            values = []
-            for row_number in range(10, 17):
-                cell = worksheet[f"F{row_number}"]
-                if cell.value in (None, ""):
-                    continue
-                values.append((cell.value, cell.number_format or "General"))
-
-            try:
-                pisos_int = int(pisos_value or 0)
-            except Exception:
-                pisos_int = 0
-            if pisos_int > 0:
-                values = values[:min(pisos_int, len(values))]
-
-            return values
+            spt_values = self._calculate_spt_values(template_id, use_lower)
+            # Convert to tuples with number format
+            return [(v, "General") for v in spt_values]
         except Exception:
-            logger.debug("No se pudieron leer los valores de N\u00b0 CAMPO desde plantilla_1.xlsx", exc_info=True)
+            logger.debug("No se pudieron calcular los valores de N° CAMPO para template %s", template_id, exc_info=True)
             return []
 
     def _fill_legacy_xls_template(
@@ -221,10 +250,12 @@ class ExcelService:
         return int(digits or 0), column_index_from_string(letters or "A")
 
     def _soil_style_from_color(self, color_name: Optional[str]):
+        # Comprehensive color mapping for geotechnical soil descriptions
+        # Includes all 52 colors from frontend with appropriate hex codes
         color_map = {
-            "verde": "92D050",
-            "verde claro": "C6E0B4",
+            # Original colors
             "beige": "F5F0D7",
+            "beis": "F5F0D7",
             "café": "8B5A2B",
             "cafe": "8B5A2B",
             "amarillo": "FFD966",
@@ -232,15 +263,89 @@ class ExcelService:
             "blanco": "FFFFFF",
             "gris claro": "D9D9D9",
             "naranja": "F4B183",
+            "verde": "92D050",
+            "verde claro": "C6E0B4",
+            
+            # Expanded brown/coffee variants
+            "café oscuro": "5C3D2E",
+            "café claro": "A0826D",
+            "café rojizo": "9B6B4A",
+            "marrón": "8B4513",
+            "marrón claro": "A0826D",
+            "marrón oscuro": "5C3D2E",
+            "marrón rojizo": "9B6B4A",
+            
+            # Yellow variants
+            "amarillo claro": "FFEB3B",
+            "amarillo oscuro": "D4A520",
+            "amarillo café": "9B8C00",
+            
+            # Red variants
+            "rojo": "FF0000",
+            "rojo oscuro": "8B0000",
+            
+            # White variants
+            "blanco sucio": "E8E8E8",
+            
+            # Gray variants
+            "gris": "808080",
+            "gris oscuro": "505050",
+            "gris azuloso": "708090",
+            "gris amarillento": "A9A9A9",
+            
+            # Orange variants
+            "naranja claro": "FFD700",
+            "naranja oscuro": "FF8C00",
+            
+            # Green variants
+            "verde oscuro": "008000",
+            
+            # Black/Dark variants
+            "negro": "000000",
+            "negro verdoso": "1B4D3E",
+            
+            # Red/Pink variants
+            "rosa": "FFC0CB",
+            
+            # Purple/Violet variants
+            "púrpura": "800080",
+            "violeta": "EE82EE",
+            
+            # Blue variants
+            "azul": "0000FF",
+            "azul claro": "ADD8E6",
+            "azul oscuro": "00008B",
+            
+            # Cyan/Turquoise variants
+            "turquesa": "40E0D0",
+            "cian": "00FFFF",
+            
+            # Other earth tones
+            "crema": "FFFDD0",
+            "mostaza": "FFDB58",
+            "ocre": "CC7000",
+            "siena": "A0522D",
+            "tostado": "D2B48C",
+            "leonado": "DAA520",
+            "grisáceo": "A9A9A9",
+            "pardusco": "8B7355",
+            
+            # Generic descriptors
+            "oscuro": "505050",
+            "claro": "E8E8E8",
         }
+        
         normalized = self._normalize(color_name or "")
-        fill_hex = color_map.get(normalized, "F4B183")
+        fill_hex = color_map.get(normalized, "F4B183")  # Default to naranja if not found
 
         def is_dark(hex_color: str) -> bool:
-            red = int(hex_color[0:2], 16)
-            green = int(hex_color[2:4], 16)
-            blue = int(hex_color[4:6], 16)
-            return (red * 299 + green * 587 + blue * 114) / 1000 < 140
+            try:
+                red = int(hex_color[0:2], 16)
+                green = int(hex_color[2:4], 16)
+                blue = int(hex_color[4:6], 16)
+                return (red * 299 + green * 587 + blue * 114) / 1000 < 140
+            except Exception:
+                return False
 
         font_color = "FFFFFF" if is_dark(fill_hex) else "1F2937"
         return PatternFill(fill_type="solid", fgColor=fill_hex), font_color
@@ -588,6 +693,20 @@ class ExcelService:
     ) -> Path:
         work_file = self._copy_template(template_id, project_id)
 
+        # Calculate toggle state once for templates that use SPT values (1, 2, 3, 12-15)
+        use_lower = False
+        templates_with_spt = {'1', '2', '3', '12', '13', '14', '15'}
+        if str(template_id) in templates_with_spt:
+            try:
+                toggle_file = Path(self.generated_dir) / '.n_campo_toggle'
+                if not toggle_file.exists():
+                    toggle_file.write_text('0')
+                counter = int(toggle_file.read_text() or '0')
+                use_lower = (counter % 2 == 0)
+                toggle_file.write_text(str(counter + 1))
+            except Exception:
+                use_lower = False
+
         if str(template_id) == '8':
             try:
                 wb_tmp = load_workbook(work_file)
@@ -794,7 +913,7 @@ class ExcelService:
                 except Exception:
                     pisos_int = 0
                 e5_value = 6 if pisos_int <= 3 else 15
-                n_campo_values = self._get_legacy_n_campo_values(data.get('pisos'))
+                n_campo_values = self._get_legacy_n_campo_values(template_id, use_lower)
                 self._fill_legacy_xls_template(work_file, project_value, fecha_value, e5_value, n_campo_values)
             except Exception:
                 try:
@@ -873,62 +992,21 @@ class ExcelService:
                 primary_updates[p_cell] = f"=L{row_number}"
 
         # Enforce specific SPT values per plantilla
+        spt_final_values = self._calculate_spt_values(template_id, use_lower)
+        
+        # Apply final SPT values to Column F
         if str(template_id) == "1":
-            spt_values = [7, 8, 15, 19, 23, 26, 29]
             spt_start = 10
-            for i, v in enumerate(spt_values):
-                primary_updates[f"F{spt_start + i}"] = v
-        elif str(template_id) == "3":
-            # Secuencia completa proporcionada por el usuario para F10:F35 (26 valores)
-            spt_values_3 = [
-                13, 17, 28, 35, 40, 46, 45, 49, 50, 53, 55, 58, 60, 63,
-                65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65,
-            ]
-            spt_start = 10
-            for i, v in enumerate(spt_values_3):
+            for i, v in enumerate(spt_final_values):
                 primary_updates[f"F{spt_start + i}"] = v
         elif str(template_id) == "2":
-            # Valores proporcionados por el usuario para plantilla 2 F10:F25
-            spt_values_2 = [
-                15, 20, 22, 29, 35, 38, 42, 45, 48, 51, 54, 57, 59, 62, 65, 68,
-            ]
             spt_start = 10
-            for i, v in enumerate(spt_values_2):
+            for i, v in enumerate(spt_final_values):
                 primary_updates[f"F{spt_start + i}"] = v
-
-        # Convert the numeric SPT values in column F into ranges like "6-7", "7-8",
-        # using the final value that will appear in column F. Apply across the full
-        # target range for each plantilla so the visible SPT block shows ranges.
-        # Decide per-copy whether to show the lower or upper value.
-        # Implement alternating behavior across generated files using a toggle file
-        # stored under the generated directory so successive calls flip choice.
-        toggle_file = Path(self.generated_dir) / '.n_campo_toggle'
-        try:
-            if not toggle_file.exists():
-                toggle_file.write_text('0')
-            counter = int(toggle_file.read_text() or '0')
-        except Exception:
-            counter = 0
-
-        # even -> show lower (e.g., 6), odd -> show upper (e.g., 7)
-        use_lower = (counter % 2 == 0)
-
-        # After reading, increment and persist for next generation
-        try:
-            toggle_file.write_text(str(counter + 1))
-        except Exception:
-            pass
-
-        for row_num in range(start_row, f_end + 1):
-            f_cell = f"F{row_num}"
-            raw = primary_updates.get(f_cell)
-            try:
-                v = int(float(raw))
-            except Exception:
-                continue
-            lower = max(0, v - 1)
-            upper = v
-            primary_updates[f_cell] = str(lower) if use_lower else str(upper)
+        elif str(template_id) == "3":
+            spt_start = 10
+            for i, v in enumerate(spt_final_values):
+                primary_updates[f"F{spt_start + i}"] = v
         if primary_updates:
             primary_sheet = sheet_targets.get(self._normalize("P3"))
             if primary_sheet:

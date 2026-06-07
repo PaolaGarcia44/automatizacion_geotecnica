@@ -2,78 +2,68 @@
 
 import { useState } from 'react'
 import { generateDocuments, buildDownloadUrl, downloadGeneratedFile, type PerforacionData } from '@/services/documentService'
-import { Building2, Check, AlertCircle, Download } from 'lucide-react'
+import { Building2, Check, AlertCircle, Download, Plus, X } from 'lucide-react'
 import { MainLayout } from '@/layouts/MainLayout'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useSoilTypes } from '@/hooks/useSoilTypes'
 
-// Minimal form: Proyecto, Fecha y Pisos
-
-const SOIL_TYPE_OPTIONS = [
-  'Capa vegetal con raíces y material orgánico',
-  'Capa vegetal húmeda con presencia de raíces finas',
-  'Material orgánico color negro de consistencia blanda',
-  'Arcilla limosa color café oscuro de consistencia media',
-  'Arcilla limosa color café rojizo de consistencia firme',
-  'Arcilla limosa húmeda de color gris oscuro',
-  'Arcilla arenosa color amarillo café',
-  'Arcilla arenosa color rojizo de consistencia media',
-  'Arcilla arenosa compacta con fragmentos de roca',
-  'Arcilla de alta plasticidad color café oscuro',
-  'Arcilla firme parcialmente meteorizada',
-  'Arcilla blanda con vetas limosas',
-  'Arcilla gris azulosa de consistencia firme',
-  'Arena limosa color amarillo café medianamente compacta',
-  'Arena limosa fina de color beige claro',
-  'Arena limosa húmeda con contenido de grava fina',
-  'Arena fina compacta color amarillo claro',
-  'Arena fina color café claro de compacidad media',
-  'Arena fina limosa con humedad moderada',
-  'Arena gruesa con contenido de grava',
-  'Arena gruesa compacta color café amarillento',
-  'Arena arcillosa color naranja de compacidad media',
-  'Arena arcillosa húmeda con fragmentos de roca',
-  'Arena media compacta color beige',
-  'Arena suelta con contenido limoso',
-  'Limo arenoso color gris amarillento',
-  'Limo arenoso húmedo de baja plasticidad',
-  'Limo arcilloso color café claro',
-  'Limo orgánico húmedo color negro',
-  'Limo fino saturado de color gris oscuro',
-  'Grava arenosa con cantos rodados pequeños',
-  'Grava limosa de compacidad media',
-  'Grava fina mezclada con arena amarilla',
-  'Material granular húmedo y compacto',
-  'Material aluvial compuesto por arena y grava',
-  'Material de relleno heterogéneo con fragmentos pétreos',
-  'Material de relleno con presencia de escombros',
-  'Suelo residual de roca meteorizada',
-  'Suelo residual arenoso de origen ígneo',
-  'Suelo residual arcilloso color naranja',
-  'Suelo residual con fragmentos de cuarzo',
-  'Suelo residual parcialmente meteorizado',
-  'Roca meteorizada color café amarillento',
-  'Roca fracturada parcialmente meteorizada',
-  'Roca alterada con presencia de humedad',
-  'Ceniza volcánica mezclada con arena fina',
-  'Arena fina con presencia de ceniza volcánica',
-  'Material residual arcilloso de color rojizo',
-  'Arena limosa compacta de color amarillo oscuro',
-  'Arcilla con presencia de óxidos de hierro',
-  'Suelo limo arenoso de baja plasticidad',
-  'Arena arcillosa medianamente compacta',
-  'Material granular con humedad natural moderada',
-  'Arcilla húmeda con fragmentos meteorizados',
-  'Arena fina beige con grava dispersa',
-  'Arcilla café amarillenta de consistencia rígida',
-  'Material limo arcilloso parcialmente saturado',
-  'Suelo residual compacto con gravas finas',
+// Expanded color options - much broader selection
+const SOIL_COLOR_OPTIONS = [
+  'Beige',
+  'Café',
+  'Café oscuro',
+  'Café claro',
+  'Café rojizo',
+  'Amarillo',
+  'Amarillo claro',
+  'Amarillo oscuro',
+  'Amarillo café',
+  'Rojizo',
+  'Rojo oscuro',
+  'Blanco',
+  'Blanco sucio',
+  'Gris',
+  'Gris claro',
+  'Gris oscuro',
+  'Gris azuloso',
+  'Gris amarillento',
+  'Naranja',
+  'Naranja claro',
+  'Naranja oscuro',
+  'Verde',
+  'Verde claro',
+  'Verde oscuro',
+  'Negro',
+  'Negro verdoso',
+  'Marrón',
+  'Marrón claro',
+  'Marrón oscuro',
+  'Marrón rojizo',
+  'Rojo',
+  'Rosa',
+  'Púrpura',
+  'Violeta',
+  'Azul',
+  'Azul claro',
+  'Azul oscuro',
+  'Turquesa',
+  'Cian',
+  'Beis',
+  'Crema',
+  'Mostaza',
+  'Ocre',
+  'Siena',
+  'Tostado',
+  'Leonado',
+  'Grisáceo',
+  'Pardusco',
+  'Oscuro',
+  'Claro',
 ]
-
-const SOIL_COLOR_OPTIONS = ['Beige', 'Café', 'Amarillo', 'Rojizo', 'Blanco', 'Gris claro', 'Naranja', 'Verde']
 
 interface SoilLayerForm {
   profundidad_z: string
@@ -88,6 +78,7 @@ const DEFAULT_SOIL_LAYERS: SoilLayerForm[] = [
 ]
 
 export default function GenerarPage() {
+  const { soilTypes, addSoilType, removeSoilType, isLoaded } = useSoilTypes()
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
@@ -99,6 +90,8 @@ export default function GenerarPage() {
   const [pisos, setPisos] = useState<number | ''>('')
   const [soilLayers, setSoilLayers] = useState<SoilLayerForm[]>(DEFAULT_SOIL_LAYERS)
   const [images, setImages] = useState<File[] | null>(null)
+  const [newSoilType, setNewSoilType] = useState('')
+  const [showCustomSoilInput, setShowCustomSoilInput] = useState(false)
 
   const addSoilLayer = () => {
     setSoilLayers((prev) => [...prev, { profundidad_z: '', tipo_suelo_principal: '', color_predominante: '' }])
@@ -306,6 +299,61 @@ export default function GenerarPage() {
             </CardHeader>
             <CardContent className='space-y-4 p-6 sm:p-8'>
               <p className='text-center text-sm text-slate-500'>Selecciona el tipo de suelo y su color predominante para cada capa.</p>
+
+              {/* Custom Soil Type Input */}
+              <div className='bg-blue-50 border border-blue-200 rounded-lg p-4'>
+                <button
+                  type='button'
+                  onClick={() => setShowCustomSoilInput(!showCustomSoilInput)}
+                  className='inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700'
+                >
+                  <Plus className='h-4 w-4' />
+                  {showCustomSoilInput ? 'Cancelar' : 'Agregar tipo de suelo personalizado'}
+                </button>
+
+                {showCustomSoilInput && (
+                  <div className='mt-3 space-y-2'>
+                    <Input
+                      type='text'
+                      placeholder='Ej: Arena roja con fragmentos de mica'
+                      value={newSoilType}
+                      onChange={(e) => setNewSoilType(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && newSoilType.trim()) {
+                          addSoilType(newSoilType)
+                          setNewSoilType('')
+                          setShowCustomSoilInput(false)
+                        }
+                      }}
+                      className='h-10 rounded-lg border-blue-300 bg-white text-sm'
+                    />
+                    <div className='flex gap-2'>
+                      <Button
+                        onClick={() => {
+                          if (newSoilType.trim()) {
+                            addSoilType(newSoilType)
+                            setNewSoilType('')
+                            setShowCustomSoilInput(false)
+                          }
+                        }}
+                        className='h-8 bg-blue-600 text-white text-xs'
+                      >
+                        Guardar tipo
+                      </Button>
+                      <Button
+                        onClick={() => setShowCustomSoilInput(false)}
+                        className='h-8 bg-gray-300 text-gray-700 text-xs'
+                      >
+                        Cancelar
+                      </Button>
+                    </div>
+                    <p className='text-xs text-gray-600'>
+                      Se guardará automáticamente en tu navegador para futuras sesiones.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div className='flex items-center justify-center mb-2'>
                 <Button onClick={addSoilLayer} className='h-9 rounded-lg bg-emerald-600 text-white px-3 shadow-sm'>Agregar capa</Button>
               </div>
@@ -360,11 +408,14 @@ export default function GenerarPage() {
                           }
                           setSoilLayers(next)
                         }}
-                        className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm shadow-sm outline-none transition focus:border-blue-500'
+                        disabled={!isLoaded}
+                        className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm shadow-sm outline-none transition focus:border-blue-500 disabled:opacity-50'
                       >
-                        <option value=''>Selecciona un tipo de suelo</option>
-                        {SOIL_TYPE_OPTIONS.map((option) => (
-                          <option key={option} value={option}>{option}</option>
+                        <option value=''>{isLoaded ? 'Selecciona un tipo de suelo' : 'Cargando...'}</option>
+                        {soilTypes.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -388,7 +439,9 @@ export default function GenerarPage() {
                       >
                         <option value=''>Selecciona un color</option>
                         {SOIL_COLOR_OPTIONS.map((option) => (
-                          <option key={option} value={option}>{option}</option>
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
                         ))}
                       </select>
                     </div>
