@@ -65,21 +65,18 @@ class ExcelService:
         logger.info("Plantilla copiada: %s -> %s", template_path, output_path)
         return output_path
 
-    def _calculate_spt_values(self, template_id: str, use_lower: bool) -> List[str]:
-        """Calculate SPT values with toggle already applied.
-        
+    def _calculate_spt_values(self, template_id: str, use_lower: bool, pisos_int: int = 0) -> List[str]:
+        """Calculate SPT values based on building floors and toggle.
+
         Args:
             template_id: Template ID to get SPT values for
-            use_lower: Whether to show lower (True) or upper (False) values
-        
+            use_lower: Selects Option 1 (True) or Option 2 (False) within the type
+            pisos_int: Number of building floors — determines sequence length and values
+
         Returns:
-            List of SPT values as strings
+            List of SPT values as strings:
+              ≤3 pisos  → 7 values,  ≤10 pisos → 16 values,  >10 pisos → 25 values
         """
-        # Map legacy template IDs to modern templates
-        # Template 12 (P-1.xls) → Template 1 (7 values)
-        # Template 13 (P-2.xls) → Template 2 (16 values)
-        # Template 14 (P-3.xls) → Template 3 (26 values)
-        # Template 15 (P-4.xls) → Template 3 (26 values)
         template_mapping = {
             '12': '1',
             '13': '2',
@@ -87,35 +84,78 @@ class ExcelService:
             '15': '3',
         }
         effective_template_id = template_mapping.get(str(template_id), str(template_id))
-        
-        if effective_template_id == "1":
-            spt_values = [7, 8, 15, 19, 23, 26, 29]
-        elif effective_template_id == "3":
-            spt_values = [
-                13, 17, 28, 35, 40, 46, 45, 49, 50, 53, 55, 58, 60, 63,
-                65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65,
-            ]
-        elif effective_template_id == "2":
-            spt_values = [
-                15, 20, 22, 29, 35, 38, 42, 45, 48, 51, 54, 57, 59, 62, 65, 68,
-            ]
-        else:
-            spt_values = []
-        
-        # Convert to lower/upper values
-        final_values = []
-        for v in spt_values:
-            lower = max(0, v - 1)
-            upper = v
-            final_values.append(str(lower) if use_lower else str(upper))
-        
-        return final_values
 
-    def _get_legacy_n_campo_values(self, template_id: str, use_lower: bool) -> List[tuple]:
-        """Get N° CAMPO values for legacy .xls templates with toggle already applied."""
+        if effective_template_id in ("1", "2", "3"):
+            # Pisos-aware sequences — same rules for P-1 / P-2 / P-3 / P-4
+            # use_lower=True → Option 1,  use_lower=False → Option 2
+            if pisos_int <= 3:
+                opt1 = [6, 7, 14, 18, 22, 26, 28]
+                opt2 = [7, 8, 15, 19, 23, 26, 29]
+            elif pisos_int <= 10:
+                opt1 = [14, 19, 21, 28, 34, 37, 41, 44, 47, 50, 53, 56, 58, 61, 64, 67]
+                opt2 = [15, 20, 22, 29, 35, 38, 42, 45, 48, 51, 54, 57, 59, 62, 65, 68]
+            else:
+                base1 = [12, 16, 27, 34, 39, 45, 44, 48, 49, 52, 54, 57, 59, 62, 64]
+                base2 = [13, 17, 28, 35, 40, 46, 45, 49, 50, 53, 55, 58, 60, 63, 65]
+                opt1 = base1 + [64] * (25 - len(base1))
+                opt2 = base2 + [65] * (25 - len(base2))
+            spt_values = opt1 if use_lower else opt2
+            return [str(v) for v in spt_values]
+
+        return []
+
+    def _save_spt_state(self, effective_template_id: str, values: List[str]) -> None:
+        """Persist SPT values so a paired legacy template can reuse them exactly."""
         try:
-            spt_values = self._calculate_spt_values(template_id, use_lower)
-            # Convert to tuples with number format
+            import json
+            state_file = Path(self.generated_dir) / f".spt_state_{effective_template_id}.json"
+            state_file.write_text(json.dumps(values))
+        except Exception:
+            logger.debug("No se pudieron guardar los valores SPT para template %s", effective_template_id, exc_info=True)
+
+    def _load_spt_state(self, effective_template_id: str) -> Optional[List[str]]:
+        """Read previously persisted SPT values for a given template."""
+        try:
+            import json
+            state_file = Path(self.generated_dir) / f".spt_state_{effective_template_id}.json"
+            if state_file.exists():
+                return json.loads(state_file.read_text())
+        except Exception:
+            logger.debug("No se pudieron cargar los valores SPT para template %s", effective_template_id, exc_info=True)
+        return None
+
+    def _get_legacy_n_campo_values(self, template_id: str, use_lower: bool, pisos_int: int = 0) -> List[tuple]:
+        """Get N° CAMPO values for legacy .xls templates.
+
+        All four P files (P-1 through P-4) mirror the CORRELACION GEOTÉCNICA that
+        was generated in the same request so their T column matches column F of that file.
+        The CORRELACION template used depends on the pisos range:
+          pisos ≤ 3  → template '1' (plantilla_1.xlsx)
+          pisos ≤ 10 → template '2' (plantilla_2.xlsx)
+          pisos > 10 → template '3' (plantilla_3.xlsx)
+        """
+        # Determine which CORRELACION template was generated for this pisos range
+        # and the expected value count for that range.
+        if pisos_int <= 3:
+            correlation_key = '1'
+            expected_count = 7
+        elif pisos_int <= 10:
+            correlation_key = '2'
+            expected_count = 16
+        else:
+            correlation_key = '3'
+            expected_count = 25
+
+        # Load the state saved by the CORRELACION template in this same request.
+        # Reject states with the wrong count (stale from a different pisos run).
+        saved = self._load_spt_state(correlation_key)
+        if saved and len(saved) == expected_count:
+            return [(v, "General") for v in saved]
+
+        # Fallback: compute fresh using opt1 (use_lower=True) so all four P files
+        # stay consistent when no saved state is available.
+        try:
+            spt_values = self._calculate_spt_values(correlation_key, True, pisos_int)
             return [(v, "General") for v in spt_values]
         except Exception:
             logger.debug("No se pudieron calcular los valores de N° CAMPO para template %s", template_id, exc_info=True)
@@ -128,6 +168,10 @@ class ExcelService:
         fecha_value,
         e5_value,
         n_campo_values: Optional[List[tuple]] = None,
+        soil_descriptions: Optional[List[str]] = None,
+        soil_colors: Optional[List[str]] = None,
+        depth_values: Optional[List[float]] = None,
+        expand_depth_levels: Optional[int] = None,
     ) -> None:
         try:
             import pythoncom
@@ -172,12 +216,185 @@ class ExcelService:
             if e5_value is not None:
                 worksheet.Range("E5").Value = e5_value
 
+            # Update column B depth markers (Z(m)) based on layer count.
+            # Template slots: rows 10, 12, 14, 16, 18, 20 — one per layer, same order as plantilla_1.
+            # Skipped when expand_depth_levels is set (B column handled by the scale block below).
+            if depth_values is not None and expand_depth_levels is None:
+                _depth_row_slots = [10, 12, 14, 16, 18, 20]
+                for r in _depth_row_slots:
+                    try:
+                        worksheet.Range(f"B{r}").Value = ""
+                    except Exception:
+                        pass
+                for idx, d_val in enumerate(depth_values[:len(_depth_row_slots)]):
+                    worksheet.Range(f"B{_depth_row_slots[idx]}").Value = (
+                        d_val if d_val and d_val > 0 else float(idx + 1)
+                    )
+
+            # Dynamic depth scale expansion for P-1 (and similar single-column-B templates).
+            # The template has 7 levels (0-6) in rows 8-21, each occupying 2 merged rows.
+            # Rows are inserted before OBSERVACIONES (row 22) when more levels are required.
+            # Charts at D7/F7 and images in C8:C19 are above the insertion point and unaffected.
+            if expand_depth_levels is not None:
+                _B_FIRST_ROW = 8      # B8 = depth 0 in the template
+                _TEMPLATE_LEVELS = 7  # template contains levels 0-6
+                _ROWS_PER = 2         # each level occupies 2 merged rows
+                _OBS_START = _B_FIRST_ROW + _TEMPLATE_LEVELS * _ROWS_PER  # = 22
+
+                target_levels = int(expand_depth_levels)
+
+                if target_levels > _TEMPLATE_LEVELS:
+                    extra_levels = target_levels - _TEMPLATE_LEVELS
+                    extra_rows = extra_levels * _ROWS_PER
+                    ins_end = _OBS_START + extra_rows - 1
+
+                    # Insert rows shifting OBSERVACIONES block down.
+                    worksheet.Rows(f"{_OBS_START}:{ins_end}").Insert()
+
+                    # Merge B and K for each new level and apply basic alignment.
+                    for _lvl in range(_TEMPLATE_LEVELS, target_levels):
+                        _r1 = _B_FIRST_ROW + _lvl * _ROWS_PER
+                        _r2 = _r1 + 1
+
+                        worksheet.Rows(_r1).RowHeight = 15.0
+                        worksheet.Rows(_r2).RowHeight = 15.0
+
+                        _b = worksheet.Range(f"B{_r1}:B{_r2}")
+                        _b.Merge()
+                        _b.HorizontalAlignment = -4108  # xlCenter
+                        _b.VerticalAlignment = -4108    # xlCenter
+
+                        _k = worksheet.Range(f"K{_r1}:K{_r2}")
+                        _k.Merge()
+                        _k.HorizontalAlignment = -4108
+                        _k.VerticalAlignment = -4108
+
+                # Write depth scale 0 … target_levels-1 to every B level (existing + new).
+                for _lvl in range(target_levels):
+                    _row = _B_FIRST_ROW + _lvl * _ROWS_PER
+                    worksheet.Range(f"B{_row}").Value = float(_lvl)
+
+            # Write N campo values to column T starting at row 13.
+            # MUST run after expand_depth_levels inserts rows — if written before,
+            # the row insertion at row 22 shifts T22+ down and splits the sequence.
             if n_campo_values:
+                _t_count = len(n_campo_values)
+                # Clear T and U from row 13 to a safe upper bound to remove any
+                # stale template default values and rows shifted by row expansion.
+                _clear_end = max(30, 12 + _t_count + 5)
+                for _tr in range(13, _clear_end + 1):
+                    try:
+                        worksheet.Range(f"T{_tr}").ClearContents()
+                    except Exception:
+                        pass
+                    try:
+                        worksheet.Range(f"U{_tr}").ClearContents()
+                    except Exception:
+                        pass
+
                 for offset, (value, number_format) in enumerate(n_campo_values, start=13):
+                    i = offset - 13  # 0-indexed level
                     cell = worksheet.Range(f"T{offset}")
                     cell.Value = value
                     if number_format:
                         cell.NumberFormat = number_format
+                    # Write Z(m) depth for this level: 0.45, 1.45, 2.45, ...
+                    u_cell = worksheet.Range(f"U{offset}")
+                    u_cell.Value = round(i + 0.45, 2)
+                    u_cell.NumberFormat = "0.00"
+
+                # Write K column formulas =T13, =T14, ... down to the last B row.
+                # K column uses 2 rows per level (merged): K8, K10, K12, ...
+                # Each K cell references the matching T row so N CAMPO in the depth
+                # scale area stays in sync with the T summary table.
+                _K_FIRST = 8
+                _K_STEP = 2
+                for _ki in range(_t_count):
+                    _k_row = _K_FIRST + _ki * _K_STEP
+                    _t_ref = 13 + _ki
+                    try:
+                        worksheet.Range(f"K{_k_row}").Formula = f"=T{_t_ref}"
+                    except Exception:
+                        pass
+
+            # === PROPORTIONAL COLUMN I — Descripción Macroscópica ===
+            # Mirrors plantilla_1.xlsx column Q proportional logic (_build_soil_segments).
+            # Each soil layer occupies a fraction of I-J rows proportional to its depth.
+            # Placed AFTER depth scale expansion so the correct zone size is known.
+            if soil_descriptions is not None:
+                _I_FIRST = 8   # Column I data starts at row 8 (same as depth scale)
+                _ROWS_PER_LVL = 2
+
+                if expand_depth_levels is not None:
+                    _i_total_rows = int(expand_depth_levels) * _ROWS_PER_LVL
+                else:
+                    _i_total_rows = 7 * _ROWS_PER_LVL  # default: 7 template levels
+
+                _i_last = _I_FIRST + _i_total_rows - 1
+
+                # Clear and unmerge the I:J zone
+                _zone = worksheet.Range(f"I{_I_FIRST}:J{_i_last}")
+                _zone.UnMerge()
+                _zone.ClearContents()
+                _zone.Interior.ColorIndex = -4142  # xlColorIndexNone
+                _zone.Font.Color = 0
+                _zone.Font.Bold = False
+
+                # Build parallel lists padded to the same length
+                _descs = list(soil_descriptions)
+                _colors = list(soil_colors) if soil_colors else []
+                _depths = list(depth_values) if depth_values else []
+                _n = max(len(_descs), len(_colors), len(_depths))
+                _descs += [""] * (_n - len(_descs))
+                _colors += [""] * (_n - len(_colors))
+                _depths += [0.0] * (_n - len(_depths))
+
+                # Keep only layers that have a description or a color
+                _layers = [(d, c, z) for d, c, z in zip(_descs, _colors, _depths) if d or c]
+
+                if _layers:
+                    # Total depth = maximum depth across all layers
+                    _valid_z = [z for _, _, z in _layers if z and z > 0]
+                    _total_z = max(_valid_z) if _valid_z else float(len(_layers))
+                    if _total_z <= 0:
+                        _total_z = float(len(_layers))
+
+                    # Proportional row spans — same algorithm as _build_soil_segments
+                    _spans: List[int] = []
+                    _prev_z = 0.0
+                    for _d, _c, _z in _layers:
+                        _eff_z = _z if (_z and _z > 0) else (_prev_z + _total_z / len(_layers))
+                        _delta = max(0.0, _eff_z - _prev_z)
+                        _span = max(1, int(round(_delta / _total_z * _i_total_rows)))
+                        _spans.append(_span)
+                        _prev_z = _eff_z
+
+                    # Adjust last span so the total fills the zone exactly
+                    _diff = _i_total_rows - sum(_spans)
+                    if _spans:
+                        _spans[-1] = max(1, _spans[-1] + _diff)
+                        while sum(_spans) > _i_total_rows and _spans[-1] > 1:
+                            _spans[-1] -= 1
+
+                    _xl_center = -4108  # xlCenter for both h and v alignment
+                    _cur = _I_FIRST
+                    for (_d, _c, _z), _sp in zip(_layers, _spans):
+                        _end = min(_i_last, _cur + _sp - 1)
+                        _rng = worksheet.Range(f"I{_cur}:J{_end}")
+                        _rng.Merge()
+                        if _d:
+                            _rng.Value = str(_d)
+                        _rng.WrapText = True
+                        _rng.HorizontalAlignment = _xl_center
+                        _rng.VerticalAlignment = _xl_center
+                        _rng.Font.Size = 9
+                        if _c:
+                            _fh, _fnt = self._get_color_info(_c)
+                            _rng.Interior.Color = self._hex_to_xls_color(_fh)
+                            _rng.Font.Color = self._hex_to_xls_color(_fnt)
+                        _cur = _end + 1
+                        if _cur > _i_last:
+                            break
 
             workbook.Save()
         finally:
@@ -249,105 +466,60 @@ class ExcelService:
                 letters += character
         return int(digits or 0), column_index_from_string(letters or "A")
 
-    def _soil_style_from_color(self, color_name: Optional[str]):
-        # Comprehensive color mapping for geotechnical soil descriptions
-        # Includes all 52 colors from frontend with appropriate hex codes
-        color_map = {
-            # Original colors
-            "beige": "F5F0D7",
-            "beis": "F5F0D7",
-            "café": "8B5A2B",
-            "cafe": "8B5A2B",
-            "amarillo": "FFD966",
-            "rojizo": "C0504D",
-            "blanco": "FFFFFF",
-            "gris claro": "D9D9D9",
-            "naranja": "F4B183",
-            "verde": "92D050",
-            "verde claro": "C6E0B4",
-            
-            # Expanded brown/coffee variants
-            "café oscuro": "5C3D2E",
-            "café claro": "A0826D",
-            "café rojizo": "9B6B4A",
-            "marrón": "8B4513",
-            "marrón claro": "A0826D",
-            "marrón oscuro": "5C3D2E",
-            "marrón rojizo": "9B6B4A",
-            
-            # Yellow variants
-            "amarillo claro": "FFEB3B",
-            "amarillo oscuro": "D4A520",
-            "amarillo café": "9B8C00",
-            
-            # Red variants
-            "rojo": "FF0000",
-            "rojo oscuro": "8B0000",
-            
-            # White variants
-            "blanco sucio": "E8E8E8",
-            
-            # Gray variants
-            "gris": "808080",
-            "gris oscuro": "505050",
-            "gris azuloso": "708090",
-            "gris amarillento": "A9A9A9",
-            
-            # Orange variants
-            "naranja claro": "FFD700",
-            "naranja oscuro": "FF8C00",
-            
-            # Green variants
-            "verde oscuro": "008000",
-            
-            # Black/Dark variants
-            "negro": "000000",
-            "negro verdoso": "1B4D3E",
-            
-            # Red/Pink variants
-            "rosa": "FFC0CB",
-            
-            # Purple/Violet variants
-            "púrpura": "800080",
-            "violeta": "EE82EE",
-            
-            # Blue variants
-            "azul": "0000FF",
-            "azul claro": "ADD8E6",
-            "azul oscuro": "00008B",
-            
-            # Cyan/Turquoise variants
-            "turquesa": "40E0D0",
-            "cian": "00FFFF",
-            
-            # Other earth tones
-            "crema": "FFFDD0",
-            "mostaza": "FFDB58",
-            "ocre": "CC7000",
-            "siena": "A0522D",
-            "tostado": "D2B48C",
-            "leonado": "DAA520",
-            "grisáceo": "A9A9A9",
-            "pardusco": "8B7355",
-            
-            # Generic descriptors
-            "oscuro": "505050",
-            "claro": "E8E8E8",
-        }
-        
+    # Shared color map used by both openpyxl (.xlsx) and win32com (.xls) paths.
+    _COLOR_MAP = {
+        "beige": "F5F0D7", "beis": "F5F0D7",
+        "café": "8B5A2B", "cafe": "8B5A2B",
+        "amarillo": "FFD966", "rojizo": "C0504D",
+        "blanco": "FFFFFF", "gris claro": "D9D9D9",
+        "naranja": "F4B183", "verde": "92D050", "verde claro": "C6E0B4",
+        "café oscuro": "5C3D2E", "café claro": "A0826D",
+        "café rojizo": "9B6B4A", "marrón": "8B4513",
+        "marrón claro": "A0826D", "marrón oscuro": "5C3D2E",
+        "marrón rojizo": "9B6B4A",
+        "amarillo claro": "FFEB3B", "amarillo oscuro": "D4A520",
+        "amarillo café": "9B8C00",
+        "rojo": "FF0000", "rojo oscuro": "8B0000",
+        "blanco sucio": "E8E8E8",
+        "gris": "808080", "gris oscuro": "505050",
+        "gris azuloso": "708090", "gris amarillento": "A9A9A9",
+        "naranja claro": "FFD700", "naranja oscuro": "FF8C00",
+        "verde oscuro": "008000",
+        "negro": "000000", "negro verdoso": "1B4D3E",
+        "rosa": "FFC0CB",
+        "púrpura": "800080", "violeta": "EE82EE",
+        "azul": "0000FF", "azul claro": "ADD8E6", "azul oscuro": "00008B",
+        "turquesa": "40E0D0", "cian": "00FFFF",
+        "crema": "FFFDD0", "mostaza": "FFDB58", "ocre": "CC7000",
+        "siena": "A0522D", "tostado": "D2B48C", "leonado": "DAA520",
+        "grisáceo": "A9A9A9", "pardusco": "8B7355",
+        "oscuro": "505050", "claro": "E8E8E8",
+    }
+
+    def _get_color_info(self, color_name: Optional[str]) -> tuple:
+        """Return (fill_hex_RRGGBB, font_hex_RRGGBB) for a color name."""
         normalized = self._normalize(color_name or "")
-        fill_hex = color_map.get(normalized, "F4B183")  # Default to naranja if not found
+        fill_hex = self._COLOR_MAP.get(normalized, "F4B183")
+        try:
+            r = int(fill_hex[0:2], 16)
+            g = int(fill_hex[2:4], 16)
+            b = int(fill_hex[4:6], 16)
+            is_dark = (r * 299 + g * 587 + b * 114) / 1000 < 140
+        except Exception:
+            is_dark = False
+        font_hex = "FFFFFF" if is_dark else "1F2937"
+        return fill_hex, font_hex
 
-        def is_dark(hex_color: str) -> bool:
-            try:
-                red = int(hex_color[0:2], 16)
-                green = int(hex_color[2:4], 16)
-                blue = int(hex_color[4:6], 16)
-                return (red * 299 + green * 587 + blue * 114) / 1000 < 140
-            except Exception:
-                return False
+    @staticmethod
+    def _hex_to_xls_color(hex_rgb: str) -> int:
+        """Convert RRGGBB hex string to win32com Interior.Color integer (R+G*256+B*65536)."""
+        r = int(hex_rgb[0:2], 16)
+        g = int(hex_rgb[2:4], 16)
+        b = int(hex_rgb[4:6], 16)
+        return r + g * 256 + b * 65536
 
-        font_color = "FFFFFF" if is_dark(fill_hex) else "1F2937"
+    def _soil_style_from_color(self, color_name: Optional[str]):
+        fill_hex, font_color = self._get_color_info(color_name)
         return PatternFill(fill_type="solid", fgColor=fill_hex), font_color
 
     def _parse_depth_value(self, value) -> Optional[float]:
@@ -615,7 +787,64 @@ class ExcelService:
 
     def _extract_first_image_anchor(self, template_path: Path) -> Optional[tuple]:
         return None
-        
+
+    def _insert_image_plantilla(self, work_file: Path) -> None:
+        """Replace the placeholder image in the generated Excel with Imagen1.jpg.
+
+        The template already contains a drawing anchored at T1 (column T).
+        This method replaces only the image bytes in xl/media/image1.JPG so the
+        position, size, and all drawing XML remain untouched.
+        """
+        from app.core.config import settings as _settings
+        img_source = _settings.TEMPLATES_DIR / 'imagenes' / 'Imagen1.jpg'
+        if not img_source.exists():
+            logger.error(
+                "Imagen no encontrada para inserción en columna T: %s", img_source
+            )
+            return
+
+        img_bytes = img_source.read_bytes()
+
+        with ZipFile(work_file, 'r') as src:
+            entries = [(info, src.read(info.filename)) for info in src.infolist()]
+
+        # Find the existing media image entry (case-insensitive) and replace its bytes
+        replaced = False
+        updated_entries = []
+        for info, data in entries:
+            if info.filename.lower() == 'xl/media/image1.jpg':
+                updated_entries.append((info, img_bytes))
+                replaced = True
+            else:
+                updated_entries.append((info, data))
+
+        if not replaced:
+            logger.warning(
+                "No se encontró imagen existente (xl/media/image1.JPG) en %s; "
+                "se omite la inserción de Imagen1.jpg",
+                work_file,
+            )
+            return
+
+        with NamedTemporaryFile(delete=False, suffix='.xlsx') as tf:
+            temp_path = Path(tf.name)
+        try:
+            with ZipFile(temp_path, 'w', compression=ZIP_DEFLATED) as zf:
+                for info, data in updated_entries:
+                    zf.writestr(info, data)
+            if work_file.exists():
+                work_file.unlink()
+            shutil.move(str(temp_path), str(work_file))
+            logger.info(
+                "Imagen insertada en columna T (anclaje T1, hoja P3): %s", work_file
+            )
+        finally:
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except Exception:
+                    pass
+
 
     def _fill_general_fields(self, worksheet, template_id: str, data: dict):
         field_mapping = get_field_mapping(template_id)
@@ -706,6 +935,11 @@ class ExcelService:
                 toggle_file.write_text(str(counter + 1))
             except Exception:
                 use_lower = False
+
+        try:
+            pisos_int = int(data.get('pisos') or 0)
+        except Exception:
+            pisos_int = 0
 
         if str(template_id) == '8':
             try:
@@ -908,13 +1142,40 @@ class ExcelService:
             try:
                 fecha_value = data.get('fecha_registro', data.get('fecha_registro_original'))
                 project_value = f"PROYECTO: {data.get('proyecto_ubicacion', '')}".strip()
-                try:
-                    pisos_int = int(data.get('pisos') or 0)
-                except Exception:
-                    pisos_int = 0
-                e5_value = 6 if pisos_int <= 3 else 15
-                n_campo_values = self._get_legacy_n_campo_values(template_id, use_lower)
-                self._fill_legacy_xls_template(work_file, project_value, fecha_value, e5_value, n_campo_values)
+                e5_value = 6 if pisos_int <= 3 else (15 if pisos_int <= 10 else 25)
+                n_campo_values = self._get_legacy_n_campo_values(template_id, use_lower, pisos_int)
+
+                # Build soil descriptions, colors, and depth values for column I of P-1.xls.
+                # Mirrors the proportional layer order used for column Q of plantilla_1.xlsx.
+                _soil_descs: List[str] = []
+                _soil_colors: List[str] = []
+                _depth_vals: List[float] = []
+                for _layer in (perforaciones or []):
+                    _desc = self._clean_soil_text(
+                        _layer.get('descripcion_suelo'), _layer.get('color_predominante')
+                    )
+                    if not _desc:
+                        _desc = self._clean_soil_text(
+                            _layer.get('tipo_suelo_principal'), _layer.get('color_predominante')
+                        )
+                    _soil_descs.append(_desc or "")
+                    _soil_colors.append(_layer.get('color_predominante') or "")
+                    try:
+                        _d = float(_layer.get('profundidad_z') or 0)
+                    except Exception:
+                        _d = 0.0
+                    _depth_vals.append(_d)
+
+                # All legacy .xls templates (P-1 through P-4) use the same dynamic
+                # depth scale expansion and proportional column I color logic.
+                _expand_levels = 7 if pisos_int <= 3 else (16 if pisos_int <= 10 else 26)
+                self._fill_legacy_xls_template(
+                    work_file, project_value, fecha_value, e5_value, n_campo_values,
+                    soil_descriptions=_soil_descs if _soil_descs else None,
+                    soil_colors=_soil_colors if _soil_colors else None,
+                    depth_values=_depth_vals if _depth_vals else None,
+                    expand_depth_levels=_expand_levels,
+                )
             except Exception:
                 try:
                     if work_file.exists():
@@ -992,21 +1253,15 @@ class ExcelService:
                 primary_updates[p_cell] = f"=L{row_number}"
 
         # Enforce specific SPT values per plantilla
-        spt_final_values = self._calculate_spt_values(template_id, use_lower)
+        spt_final_values = self._calculate_spt_values(template_id, use_lower, pisos_int)
         
-        # Apply final SPT values to Column F
-        if str(template_id) == "1":
+        # Apply final SPT values to Column F and persist so paired .xls templates
+        # (P-1/P-2/P-3/P-4) can mirror the exact same values in their T column.
+        if str(template_id) in ("1", "2", "3"):
             spt_start = 10
             for i, v in enumerate(spt_final_values):
                 primary_updates[f"F{spt_start + i}"] = v
-        elif str(template_id) == "2":
-            spt_start = 10
-            for i, v in enumerate(spt_final_values):
-                primary_updates[f"F{spt_start + i}"] = v
-        elif str(template_id) == "3":
-            spt_start = 10
-            for i, v in enumerate(spt_final_values):
-                primary_updates[f"F{spt_start + i}"] = v
+            self._save_spt_state(str(template_id), spt_final_values)
         if primary_updates:
             primary_sheet = sheet_targets.get(self._normalize("P3"))
             if primary_sheet:
@@ -1134,34 +1389,7 @@ class ExcelService:
                         
                         # Column I is protected - NEVER modify - contains Marcuson K factor formulas
 
-                # Try to attach default template image if present
-                try:
-                    from openpyxl.drawing.image import Image as XLImage
-                    # image located under templates/imagenes/Imagen1.jpg (not under excel/)
-                    from app.core.config import settings as _settings
-                    img_path = _settings.TEMPLATES_DIR / 'imagenes' / 'Imagen1.jpg'
-                    if img_path.exists():
-                        # insert image into primary sheet at a fixed anchor cell (A1)
-                        primary_sheet_name = None
-                        for name in wb_tmp.sheetnames:
-                            if self._normalize(name) == self._normalize('P3'):
-                                primary_sheet_name = name
-                                break
-                        if primary_sheet_name:
-                            sheet_obj = wb_tmp[primary_sheet_name]
-                            # Only add image if sheet has no images to avoid duplicates/overlaps
-                            try:
-                                existing_images = list(getattr(sheet_obj, '_images', []))
-                            except Exception:
-                                existing_images = []
-                            if not existing_images:
-                                img = XLImage(str(img_path))
-                                # Positioning: place top-left corner at cell A1
-                                sheet_obj.add_image(img, 'A1')
-                except Exception:
-                    # non-fatal: ignore image insertion errors
-                    pass
-                # finally save workbook once after updates and optional image insertion
+                # finally save workbook once after all data updates
                 wb_tmp.save(work_file)
                 wb_tmp.close()
             except Exception:
@@ -1188,7 +1416,14 @@ class ExcelService:
                     except Exception:
                         pass
 
-        
+        # Insert/replace Imagen1.jpg at column T (T1 anchor, hoja P3) for plantilla templates
+        if str(template_id) in {'1', '2', '3'}:
+            try:
+                self._insert_image_plantilla(work_file)
+            except Exception:
+                logger.debug(
+                    "No se pudo insertar imagen en %s", work_file, exc_info=True
+                )
 
         # remove calcChain if present to avoid Excel repair dialogs
         try:
