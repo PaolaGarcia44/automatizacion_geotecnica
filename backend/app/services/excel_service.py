@@ -396,6 +396,59 @@ class ExcelService:
                         if _cur > _i_last:
                             break
 
+            # === COLUMN C — Redistribute soil-sketch images/shapes ===
+            # The template has images/shapes in C8:C21 (original 7 levels).
+            # Row insertion at row 22+ does NOT move these shapes because they
+            # are anchored above the insertion point.  Redistribute all column C
+            # shapes proportionally so they fill the full data area (row 8 down
+            # to the last row of the B depth scale).
+            try:
+                _c_n_levels = int(expand_depth_levels) if expand_depth_levels is not None else 7
+                _c_first_row = 8
+                _c_rows_per = 2
+                _c_area_top = worksheet.Rows(_c_first_row).Top
+                _c_last_row_num = _c_first_row + _c_n_levels * _c_rows_per - 1
+                _c_last_row_obj = worksheet.Rows(_c_last_row_num)
+                _c_area_bottom = _c_last_row_obj.Top + _c_last_row_obj.Height
+                _c_total_h = _c_area_bottom - _c_area_top
+
+                _col_c = worksheet.Columns("C")
+                _col_c_left = _col_c.Left
+                _col_c_width = _col_c.Width
+                _col_c_right = _col_c_left + _col_c_width
+
+                # Collect every visible shape whose horizontal centre is in column C
+                # and whose top edge is at or below the start of the data area.
+                _c_shapes = []
+                for _sh in worksheet.Shapes:
+                    try:
+                        if not _sh.Visible:
+                            continue
+                        _sh_cx = _sh.Left + _sh.Width / 2
+                        if _col_c_left <= _sh_cx <= _col_c_right:
+                            if _sh.Top >= _c_area_top - 5:
+                                _c_shapes.append(_sh)
+                    except Exception:
+                        pass
+                _c_shapes.sort(key=lambda s: s.Top)
+
+                if _c_shapes and _c_total_h > 0:
+                    _slot_h = _c_total_h / len(_c_shapes)
+                    for _idx, _sh in enumerate(_c_shapes):
+                        try:
+                            _sh.LockAspectRatio = 0   # msoFalse — allow free resize
+                            _sh.Top = _c_area_top + _idx * _slot_h
+                            _sh.Height = _slot_h
+                            _sh.Left = _col_c_left
+                            _sh.Width = _col_c_width
+                        except Exception:
+                            pass
+            except Exception:
+                logger.debug(
+                    "No se pudieron redistribuir las imágenes de la columna C en %s",
+                    workbook_path, exc_info=True,
+                )
+
             workbook.Save()
         finally:
             if workbook is not None:
