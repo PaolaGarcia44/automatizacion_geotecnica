@@ -504,12 +504,28 @@ class DocumentService:
                     for current_template, archive_name, sondeo_label in p_template_entries:
                         excel_data_for_template = dict(excel_data)
                         excel_data_for_template['sondeo'] = sondeo_label
+
+                        # Find field photos for this sondeo: files named "P-X M-  (N).jpg"
+                        _p_photos: list = []
+                        if images_dir and images_dir.exists():
+                            _prefix = f"{sondeo_label} M-".upper()
+                            _p_photos = sorted(
+                                [
+                                    f for f in images_dir.iterdir()
+                                    if f.is_file()
+                                    and f.suffix.lower() in {'.jpg', '.jpeg', '.png'}
+                                    and f.name.upper().startswith(_prefix)
+                                ],
+                                key=lambda p: p.name,
+                            )
+
                         generated_file = self.excel_service.generate_excel(
                             template_id=current_template,
                             project_id=project_id,
                             data=excel_data_for_template,
                             perforaciones=default_perforaciones,
                             parametros=parametros or [],
+                            photo_paths=_p_photos if _p_photos else None,
                         )
                         output_files.append(generated_file)
                         zip_file.write(generated_file, arcname=self._sanitize_archive_name(archive_name))

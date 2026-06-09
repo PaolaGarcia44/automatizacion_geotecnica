@@ -172,6 +172,7 @@ class ExcelService:
         soil_colors: Optional[List[str]] = None,
         depth_values: Optional[List[float]] = None,
         expand_depth_levels: Optional[int] = None,
+        photo_paths: Optional[List[Path]] = None,
     ) -> None:
         try:
             import pythoncom
@@ -396,12 +397,10 @@ class ExcelService:
                         if _cur > _i_last:
                             break
 
-            # === COLUMN C — Redistribute soil-sketch images/shapes ===
-            # The template has images/shapes in C8:C21 (original 7 levels).
-            # Row insertion at row 22+ does NOT move these shapes because they
-            # are anchored above the insertion point.  Redistribute all column C
-            # shapes proportionally so they fill the full data area (row 8 down
-            # to the last row of the B depth scale).
+            # === COLUMN C — Replace or redistribute soil-sketch images/shapes ===
+            # If photo_paths is provided, delete the template sketches and insert
+            # the user's field photos in their place, distributed across the data
+            # area.  Otherwise fall back to the original redistribution logic.
             try:
                 _c_n_levels = int(expand_depth_levels) if expand_depth_levels is not None else 7
                 _c_first_row = 8
@@ -417,8 +416,7 @@ class ExcelService:
                 _col_c_width = _col_c.Width
                 _col_c_right = _col_c_left + _col_c_width
 
-                # Collect every visible shape whose horizontal centre is in column C
-                # and whose top edge is at or below the start of the data area.
+                # Collect existing column-C shapes so we can delete or reuse them.
                 _c_shapes = []
                 for _sh in worksheet.Shapes:
                     try:
@@ -432,7 +430,35 @@ class ExcelService:
                         pass
                 _c_shapes.sort(key=lambda s: s.Top)
 
-                if _c_shapes and _c_total_h > 0:
+                if photo_paths and _c_total_h > 0:
+                    # Delete every existing column-C sketch.
+                    for _sh in _c_shapes:
+                        try:
+                            _sh.Delete()
+                        except Exception:
+                            pass
+
+                    # Insert user photos distributed evenly across the data area.
+                    _slot_h = _c_total_h / len(photo_paths)
+                    for _idx, _photo in enumerate(photo_paths):
+                        try:
+                            _top = _c_area_top + _idx * _slot_h
+                            worksheet.Shapes.AddPicture(
+                                str(_photo.resolve()),  # Filename (absolute path)
+                                0,                      # LinkToFile = msoFalse
+                                -1,                     # SaveWithDocument = msoTrue
+                                _col_c_left,            # Left
+                                _top,                   # Top
+                                _col_c_width,           # Width
+                                _slot_h,                # Height
+                            )
+                        except Exception:
+                            logger.debug(
+                                "No se pudo insertar foto %s en columna C de %s",
+                                _photo, workbook_path, exc_info=True,
+                            )
+                elif _c_shapes and _c_total_h > 0:
+                    # Fallback: redistribute existing template sketches.
                     _slot_h = _c_total_h / len(_c_shapes)
                     for _idx, _sh in enumerate(_c_shapes):
                         try:
@@ -996,6 +1022,7 @@ class ExcelService:
         data: dict,
         perforaciones: Optional[List[dict]] = None,
         parametros: Optional[List[dict]] = None,
+        photo_paths: Optional[List[Path]] = None,
     ) -> Path:
         work_file = self._copy_template(template_id, project_id)
 
@@ -1096,9 +1123,9 @@ class ExcelService:
                 if layer_type_text:
                     self._set_cell_value(target_sheet, 'E6', layer_type_text)
 
-                random_values = random.sample(range(10, 100), 3)
-                for cell_ref, value in zip(('K13', 'L13', 'M13'), random_values):
-                    self._set_cell_value(target_sheet, cell_ref, value)
+                self._set_cell_value(target_sheet, 'K14', random.choice([15, 14, 16]))
+                self._set_cell_value(target_sheet, 'L14', random.choice([24, 25, 26]))
+                self._set_cell_value(target_sheet, 'M14', random.choice([34, 35, 36]))
 
                 wb_tmp.save(work_file)
                 wb_tmp.close()
@@ -1252,6 +1279,7 @@ class ExcelService:
                     soil_colors=_soil_colors if _soil_colors else None,
                     depth_values=_depth_vals if _depth_vals else None,
                     expand_depth_levels=_expand_levels,
+                    photo_paths=photo_paths,
                 )
             except Exception:
                 try:
