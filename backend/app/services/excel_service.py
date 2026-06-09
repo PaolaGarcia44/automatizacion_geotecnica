@@ -449,6 +449,30 @@ class ExcelService:
                     workbook_path, exc_info=True,
                 )
 
+            # === EXPAND CHARTS down to the last row with data in column B ===
+            try:
+                _cht_n_levels = int(expand_depth_levels) if expand_depth_levels is not None else 7
+                _cht_first_row = 8
+                _cht_rows_per = 2
+                _cht_last_row_num = _cht_first_row + _cht_n_levels * _cht_rows_per - 1
+                _cht_last_row_obj = worksheet.Rows(_cht_last_row_num)
+                _cht_area_bottom = _cht_last_row_obj.Top + _cht_last_row_obj.Height
+
+                _cht_col = worksheet.ChartObjects()
+                for _ci in range(1, _cht_col.Count + 1):
+                    try:
+                        _co = _cht_col(_ci)
+                        _new_h = _cht_area_bottom - _co.Top
+                        if _new_h > 0:
+                            _co.Height = _new_h
+                    except Exception:
+                        pass
+            except Exception:
+                logger.debug(
+                    "No se pudieron expandir las gráficas en %s",
+                    workbook_path, exc_info=True,
+                )
+
             workbook.Save()
         finally:
             if workbook is not None:
