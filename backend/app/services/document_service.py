@@ -315,6 +315,8 @@ class DocumentService:
         template_ids: Optional[List[str]] = None,
         images_dir: Optional[Path] = None,
         project_id: Optional[str] = None,
+        clasificacion_suelo: Optional[str] = None,
+        clasificaciones_por_lab: Optional[Dict[str, str]] = None,
     ) -> Dict:
         """Generate the Excel file from the selected template."""        
         try:
@@ -451,14 +453,26 @@ class DocumentService:
                 # List of all template ids included in the ZIP (for metadata)
                 batch_templates_with_asentamientos = list(batch_templates) + list(asentamientos_template_ids) + [str(tpl_id) for tpl_id, _, _ in p_template_entries]
 
+                # Pre-seed lab state so template '8' (CAPACIDAD PORTANTE) can read
+                # n_golpes even though it runs before the LABORATORIO templates.
+                # Template '4' will overwrite this with its actual K14 value later.
+                import random as _rnd_pre
+                _pre_n = _rnd_pre.choice([14, 15, 16])
+                self.excel_service._save_lab_state({'n_golpes': _pre_n, 'lp': 22})
+
                 with ZipFile(zip_path, 'w', compression=ZIP_DEFLATED) as zip_file:
                     for current_template in batch_templates:
+                        if clasificaciones_por_lab and str(current_template) in clasificaciones_por_lab:
+                            cls_for_template = clasificaciones_por_lab[str(current_template)] or None
+                        else:
+                            cls_for_template = clasificacion_suelo
                         generated_file = self.excel_service.generate_excel(
                             template_id=current_template,
                             project_id=project_id,
                             data=excel_data,
                             perforaciones=default_perforaciones,
                             parametros=parametros or [],
+                            clasificacion_suelo=cls_for_template,
                         )
                         output_files.append(generated_file)
 

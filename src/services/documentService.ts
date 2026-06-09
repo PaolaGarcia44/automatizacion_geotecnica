@@ -33,6 +33,8 @@ export interface DocumentGenerationRequest {
   perforaciones?: PerforacionData[]
   template_id?: string
   template_ids?: string[]
+  clasificacion_suelo?: string
+  clasificaciones_por_lab?: Record<string, string>
 }
 
 export interface DocumentGenerationResponse {
@@ -105,6 +107,10 @@ export const generateDocuments = async (
     form.append('parametros', JSON.stringify((request as any).parametros ?? []))
     if (request.template_id) form.append('template_id', request.template_id)
     if (request.template_ids) form.append('template_ids', JSON.stringify(request.template_ids))
+    if (request.clasificacion_suelo) form.append('clasificacion_suelo', request.clasificacion_suelo)
+    if (request.clasificaciones_por_lab && Object.keys(request.clasificaciones_por_lab).length > 0) {
+      form.append('clasificaciones_por_lab', JSON.stringify(request.clasificaciones_por_lab))
+    }
 
     if (images && images.length) {
       images.forEach((file) => form.append('files', file, file.name))

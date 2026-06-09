@@ -38,6 +38,8 @@ async def generate_documents(
     parametros: str = Form('[]'),
     template_id: Optional[str] = Form(None),
     template_ids: Optional[str] = Form(None),
+    clasificacion_suelo: Optional[str] = Form(None),
+    clasificaciones_por_lab: Optional[str] = Form(None),
     files: list[UploadFile] | None = File(None),
 ) -> DocumentGenerationResponse:
     try:
@@ -69,6 +71,13 @@ async def generate_documents(
         except Exception:
             logger.debug('No se pudieron guardar imágenes subidas', exc_info=True)
 
+        clf_por_lab = None
+        if clasificaciones_por_lab:
+            try:
+                clf_por_lab = json.loads(clasificaciones_por_lab)
+            except Exception:
+                clf_por_lab = None
+
         result = document_service.generate_documents(
             template_id=template_id,
             template_ids=json.loads(template_ids) if template_ids else None,
@@ -81,6 +90,8 @@ async def generate_documents(
             parametros=parametros_list,
             images_dir=images_dir,
             project_id=project_id,
+            clasificacion_suelo=clasificacion_suelo or None,
+            clasificaciones_por_lab=clf_por_lab,
         )
 
         return DocumentGenerationResponse(**result)

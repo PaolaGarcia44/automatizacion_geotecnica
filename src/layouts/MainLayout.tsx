@@ -25,7 +25,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       {/* Main Content */}
       <div
         className={cn(
-          'flex flex-1 flex-col transition-all duration-300 ease-in-out',
+          'flex flex-1 flex-col min-h-0 transition-all duration-300 ease-in-out',
           isCollapsed ? 'ml-20' : 'ml-64'
         )}
       >
@@ -33,8 +33,8 @@ export function MainLayout({ children }: MainLayoutProps) {
         <Header />
 
         {/* Page Content */}
-        <main className='flex-1 overflow-auto'>
-          <div className='h-full'>{children}</div>
+        <main className='flex-1 min-h-0 overflow-y-auto'>
+          {children}
         </main>
       </div>
     </div>

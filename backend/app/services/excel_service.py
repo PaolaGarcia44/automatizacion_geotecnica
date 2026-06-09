@@ -124,6 +124,26 @@ class ExcelService:
             logger.debug("No se pudieron cargar los valores SPT para template %s", effective_template_id, exc_info=True)
         return None
 
+    def _save_lab_state(self, state: dict) -> None:
+        """Persist lab data (n_golpes, lp) so INCONFINADO and ASENTAMIENTOS can reuse it."""
+        try:
+            import json
+            state_file = Path(self.generated_dir) / ".lab_state.json"
+            state_file.write_text(json.dumps(state))
+        except Exception:
+            logger.debug("No se pudo guardar el estado de laboratorio", exc_info=True)
+
+    def _load_lab_state(self) -> Optional[dict]:
+        """Read previously persisted lab state."""
+        try:
+            import json
+            state_file = Path(self.generated_dir) / ".lab_state.json"
+            if state_file.exists():
+                return json.loads(state_file.read_text())
+        except Exception:
+            logger.debug("No se pudo cargar el estado de laboratorio", exc_info=True)
+        return None
+
     def _get_legacy_n_campo_values(self, template_id: str, use_lower: bool, pisos_int: int = 0) -> List[tuple]:
         """Get N° CAMPO values for legacy .xls templates.
 
@@ -1015,6 +1035,93 @@ class ExcelService:
 
                 self._set_cell_value(worksheet, f"{column_letter}{row_number}", value)
 
+    # ------------------------------------------------------------------
+    # USCS Atterberg helper — single-point Casagrande method (N=25)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _atterberg_for_clasificacion(clasificacion: str) -> Optional[tuple]:
+        """Return (ll, lp) int values that produce the given USCS classification.
+
+        Uses the A-line criterion embedded in the Excel classification formula:
+          S27 reads R27 (LL) and F32 (IP) and compares IP vs (LL-20)*0.73.
+          Below the A-line → M group;  above → C group.
+          LL ≤ 50 → low plasticity (L);  LL > 50 → high plasticity (H).
+        """
+        cls = (clasificacion or '').strip().upper()
+        if not cls:
+            return None
+
+        if cls == 'ML':
+            # LL ≤ 50, IP below A-line: IP < (LL-20)*0.73
+            ll = random.randint(36, 47)
+            a_line = (ll - 20) * 0.73
+            ip = random.randint(max(5, int(a_line) - 6), max(5, int(a_line) - 1))
+            return ll, ll - ip
+
+        if cls == 'MH':
+            # LL > 50, IP below A-line
+            ll = random.randint(52, 64)
+            a_line = (ll - 20) * 0.73
+            ip = random.randint(max(5, int(a_line) - 8), max(5, int(a_line) - 1))
+            return ll, ll - ip
+
+        if cls == 'CL':
+            # LL ≤ 50, IP above A-line (IP ≥ (LL-20)*0.73), LP < 24
+            ll = random.randint(33, 46)
+            a_line = (ll - 20) * 0.73
+            # ip_min ensures: above A-line (ip > a_line) AND lp = ll-ip ≤ 23 (ip ≥ ll-23)
+            ip_min = max(int(a_line) + 1, ll - 23)
+            ip = random.randint(ip_min, ip_min + 6)
+            return ll, max(5, ll - ip)
+
+        if cls == 'CH':
+            # LL > 50, IP above A-line
+            ll = random.randint(56, 74)
+            a_line = (ll - 20) * 0.73
+            ip = random.randint(int(a_line) + 1, int(a_line) + 12)
+            return ll, max(5, ll - ip)
+
+        if cls in ('SM', 'C'):
+            # Very low plasticity: IP < 4 (non-plastic or silty sand)
+            ll = random.randint(24, 32)
+            ip = random.randint(1, 3)
+            return ll, ll - ip
+
+        return None
+
+    def _apply_atterberg_to_sheet(self, target_sheet, ll: int, lp: int) -> None:
+        """Write LL and LP input cells using the single-point Casagrande method.
+
+        Uses normalized weights (dry+tara=100, tara=0) so:
+          K18 = (K15-K16)*100/(K16-K17) = (100+ll-100)*100/(100-0) = ll
+          Q27 = ((25/25)^0.121) * K18 = ll   (single-point formula, N=25)
+          K25 = (K22-K23)*100/(K23-K24) = lp
+          Q28 = AVERAGE(K25:L25) = lp
+        """
+        # Casagrande test — single point at 25 blows
+        self._set_cell_value(target_sheet, 'K14', 25)
+        self._set_cell_value(target_sheet, 'L14', None)   # blank → activates single-point path
+        self._set_cell_value(target_sheet, 'M14', None)
+        self._set_cell_value(target_sheet, 'K17', 0)      # tara = 0
+        self._set_cell_value(target_sheet, 'K16', 100)    # peso seco + tara
+        self._set_cell_value(target_sheet, 'K15', 100 + ll)  # peso húmedo + tara
+
+        # LP test — two replicates
+        for wet, dry, tara in [('K22', 'K23', 'K24'), ('L22', 'L23', 'L24')]:
+            self._set_cell_value(target_sheet, tara, 0)
+            self._set_cell_value(target_sheet, dry,  100)
+            self._set_cell_value(target_sheet, wet,  100 + lp)
+
+    def _set_sm_gradation(self, target_sheet) -> None:
+        """Adjust granulometry so X23 (% passing #200) falls between 12 and 50.
+
+        X23 = ROUND(G26, 0) where G26 = G25 - F26 = G25 - (100/E10)*E26.
+        Template defaults: E10=92.34, G25≈85.16.
+        Setting E26≈51 → F26≈55.2% → G26≈29.9 → X23=30 (12 < 30 < 50 ✓).
+        This satisfies the SM condition: AND(X23<50, X23>12, X18>50, IP<4).
+        """
+        self._set_cell_value(target_sheet, 'E26', 51.0)
+
     def generate_excel(
         self,
         template_id: str,
@@ -1023,6 +1130,7 @@ class ExcelService:
         perforaciones: Optional[List[dict]] = None,
         parametros: Optional[List[dict]] = None,
         photo_paths: Optional[List[Path]] = None,
+        clasificacion_suelo: Optional[str] = None,
     ) -> Path:
         work_file = self._copy_template(template_id, project_id)
 
@@ -1071,8 +1179,12 @@ class ExcelService:
                 self._set_cell_value(target_sheet, 'E3', client_value)
                 self._set_cell_value(target_sheet, 'E5', fecha_value)
 
-                # Keep the worksheet's existing formula structure; only refresh the
-                # standard project metadata so it reflects the current frontend.
+                # H10/H11 = "Número de golpes ensayo SPT" — mirror n_golpes from LABORATORIO
+                _lab_cap = self._load_lab_state()
+                _n_cap = _lab_cap.get('n_golpes', 16) if _lab_cap else 16
+                self._set_cell_value(target_sheet, 'H10', _n_cap)
+                self._set_cell_value(target_sheet, 'H11', _n_cap + random.randint(4, 7))
+
                 wb_tmp.save(work_file)
                 wb_tmp.close()
             finally:
@@ -1123,9 +1235,26 @@ class ExcelService:
                 if layer_type_text:
                     self._set_cell_value(target_sheet, 'E6', layer_type_text)
 
-                self._set_cell_value(target_sheet, 'K14', random.choice([15, 14, 16]))
-                self._set_cell_value(target_sheet, 'L14', random.choice([24, 25, 26]))
-                self._set_cell_value(target_sheet, 'M14', random.choice([34, 35, 36]))
+                _atterberg = self._atterberg_for_clasificacion(clasificacion_suelo or '')
+                _k14_used = None
+                if _atterberg:
+                    self._apply_atterberg_to_sheet(target_sheet, _atterberg[0], _atterberg[1])
+                    # SM/C also needs a coarser gradation so X23 (% passing #200) < 50
+                    if (clasificacion_suelo or '').strip().upper() in ('SM', 'C'):
+                        self._set_sm_gradation(target_sheet)
+                else:
+                    # Default: random Casagrande blow counts (3-point test)
+                    _k14_used = random.choice([14, 15, 16])
+                    self._set_cell_value(target_sheet, 'K14', _k14_used)
+                    self._set_cell_value(target_sheet, 'L14', random.choice([24, 25, 26]))
+                    self._set_cell_value(target_sheet, 'M14', random.choice([34, 35, 36]))
+
+                # Save lab state from the first lab template so INCONFINADO and
+                # ASENTAMIENTOS can use consistent values (n_golpes, lp).
+                if str(template_id) == '4':
+                    _lab_lp = _atterberg[1] if _atterberg else 22
+                    _lab_n = _k14_used if _k14_used is not None else 14
+                    self._save_lab_state({'n_golpes': _lab_n, 'lp': _lab_lp})
 
                 wb_tmp.save(work_file)
                 wb_tmp.close()
@@ -1182,6 +1311,22 @@ class ExcelService:
                 if selected_description:
                     self._set_cell_value(target_sheet, 'C10', selected_description)
 
+                # Mirror moisture content data from LABORATORIO LP test.
+                # C13/D13 = húmedo+tara, C14/D14 = seco+tara, C15/D15 = tara.
+                # C16/D16 and C17 are formula cells — leave them untouched.
+                _lab_st9 = self._load_lab_state()
+                _lp_val = int(_lab_st9.get('lp', 22)) if _lab_st9 else 22
+                for _ch, _cs, _ct in [('C13', 'C14', 'C15'), ('D13', 'D14', 'D15')]:
+                    _tara = round(random.uniform(5.5, 8.0), 2)
+                    _seco_net = round(random.uniform(11.0, 16.0), 2)
+                    _seco_t = round(_tara + _seco_net, 2)
+                    _humid_t = round(_seco_t + _seco_net * _lp_val / 100, 2)
+                    self._set_cell_value(target_sheet, _ch, _humid_t)
+                    self._set_cell_value(target_sheet, _cs, _seco_t)
+                    self._set_cell_value(target_sheet, _ct, _tara)
+                self._set_cell_value(target_sheet, 'C12', random.randint(80, 99))
+                self._set_cell_value(target_sheet, 'D12', random.randint(55, 79))
+
                 wb_tmp.save(work_file)
                 wb_tmp.close()
             finally:
@@ -1226,6 +1371,11 @@ class ExcelService:
                 self._set_cell_value(target_sheet, 'E5', proyecto_value)
                 self._set_cell_value(target_sheet, 'E6', cliente_value)
                 self._set_cell_value(target_sheet, 'E8', fecha_value)
+
+                # H19 = "Número de golpes ensayo SPT" — mirror K14 from LABORATORIO
+                _lab_st = self._load_lab_state()
+                _h19 = _lab_st.get('n_golpes', 16) if _lab_st else 16
+                self._set_cell_value(target_sheet, 'H19', _h19)
 
                 wb_tmp.save(work_file)
                 wb_tmp.close()

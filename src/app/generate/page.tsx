@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { generateDocuments, buildDownloadUrl, downloadGeneratedFile, type PerforacionData } from '@/services/documentService'
 import { Building2, Check, AlertCircle, Download, Plus, X } from 'lucide-react'
 import { MainLayout } from '@/layouts/MainLayout'
@@ -65,6 +65,24 @@ const SOIL_COLOR_OPTIONS = [
   'Claro',
 ]
 
+const USCS_OPTIONS = [
+  { value: '',   label: 'Automático (valores genéricos)' },
+  { value: 'ML', label: 'ML — Limo de baja plasticidad (LL ≤ 50, bajo la línea A)' },
+  { value: 'MH', label: 'MH — Limo de alta plasticidad (LL > 50, bajo la línea A)' },
+  { value: 'CL', label: 'CL — Arcilla de baja plasticidad (LL ≤ 50, sobre la línea A)' },
+  { value: 'CH', label: 'CH — Arcilla de alta plasticidad (LL > 50, sobre la línea A)' },
+  { value: 'SM', label: 'SM / C — Arena limosa / Suelo no plástico (IP < 4)' },
+]
+
+interface ClasificacionesPorLab {
+  lab1: string
+  lab2: string
+  lab3: string
+  lab4: string
+}
+
+const DEFAULT_CLASIFICACIONES: ClasificacionesPorLab = { lab1: '', lab2: '', lab3: '', lab4: '' }
+
 interface SoilLayerForm {
   profundidad_z: string
   tipo_suelo_principal: string
@@ -76,6 +94,8 @@ const DEFAULT_SOIL_LAYERS: SoilLayerForm[] = [
   { profundidad_z: '', tipo_suelo_principal: '', color_predominante: '' },
   { profundidad_z: '', tipo_suelo_principal: '', color_predominante: '' },
 ]
+
+const FORM_STORAGE_KEY = 'autogeo-form'
 
 export default function GenerarPage() {
   const { soilTypes, addSoilType, removeSoilType, isLoaded } = useSoilTypes()
@@ -90,8 +110,39 @@ export default function GenerarPage() {
   const [pisos, setPisos] = useState<number | ''>('')
   const [soilLayers, setSoilLayers] = useState<SoilLayerForm[]>(DEFAULT_SOIL_LAYERS)
   const [images, setImages] = useState<File[] | null>(null)
+  const [clasificacionGeneral, setClasificacionGeneral] = useState('')
+  const [personalizarPorLab, setPersonalizarPorLab] = useState(false)
+  const [clasificacionesPorLab, setClasificacionesPorLab] = useState<ClasificacionesPorLab>(DEFAULT_CLASIFICACIONES)
   const [newSoilType, setNewSoilType] = useState('')
   const [showCustomSoilInput, setShowCustomSoilInput] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Restore form data from sessionStorage after mount (client-only, avoids hydration mismatch)
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(FORM_STORAGE_KEY)
+      if (!raw) return
+      const d = JSON.parse(raw)
+      if (d.proyectoUbicacion) setProyectoUbicacion(d.proyectoUbicacion)
+      if (d.cliente) setCliente(d.cliente)
+      if (d.fechaRegistro) setFechaRegistro(d.fechaRegistro)
+      if (d.pisos !== undefined && d.pisos !== '') setPisos(d.pisos)
+      if (Array.isArray(d.soilLayers) && d.soilLayers.length > 0) setSoilLayers(d.soilLayers)
+      if (d.clasificacionGeneral) setClasificacionGeneral(d.clasificacionGeneral)
+      if (d.personalizarPorLab !== undefined) setPersonalizarPorLab(d.personalizarPorLab)
+      if (d.clasificacionesPorLab) setClasificacionesPorLab(d.clasificacionesPorLab)
+    } catch {}
+  }, [])
+
+  // Save form data to sessionStorage on every change
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify({
+        proyectoUbicacion, cliente, fechaRegistro, pisos,
+        soilLayers, clasificacionGeneral, personalizarPorLab, clasificacionesPorLab,
+      }))
+    } catch {}
+  }, [proyectoUbicacion, cliente, fechaRegistro, pisos, soilLayers, clasificacionGeneral, personalizarPorLab, clasificacionesPorLab])
 
   const addSoilLayer = () => {
     setSoilLayers((prev) => [...prev, { profundidad_z: '', tipo_suelo_principal: '', color_predominante: '' }])
@@ -111,6 +162,11 @@ export default function GenerarPage() {
 
     if (pisos === '' || Number(pisos) < 0) {
       setErrorMessage('Ingrese un número válido de pisos')
+      return
+    }
+
+    if (!images || images.length === 0) {
+      setErrorMessage('Debe seleccionar una carpeta de imágenes antes de generar el ZIP')
       return
     }
 
@@ -152,6 +208,10 @@ export default function GenerarPage() {
         pisos: nPisos,
         template_ids: nPisos <= 3 ? ['4', '5', '6'] : ['4', '5', '6', '7'],
         perforaciones,
+        clasificacion_suelo: personalizarPorLab ? undefined : (clasificacionGeneral || undefined),
+        clasificaciones_por_lab: personalizarPorLab
+          ? { '4': clasificacionesPorLab.lab1, '5': clasificacionesPorLab.lab2, '6': clasificacionesPorLab.lab3, '7': clasificacionesPorLab.lab4 }
+          : undefined,
       }
 
       const response = await generateDocuments(payload, images ?? undefined)
@@ -176,7 +236,7 @@ export default function GenerarPage() {
 
   return (
     <MainLayout>
-      <div className='page-padding container-main min-h-full'>
+      <div className='page-padding container-main'>
         <div className='mx-auto flex max-w-4xl flex-col gap-8 py-4 sm:py-8'>
           <div className='text-center space-y-3'>
             <span className='inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 shadow-sm'>
@@ -196,44 +256,6 @@ export default function GenerarPage() {
               </CardContent>
             </Card>
           )}
-
-          <Card className='border-gray-200 shadow-lg shadow-slate-200/50 overflow-hidden'>
-            <CardHeader className='border-b border-gray-200 bg-slate-50/80'>
-              <CardTitle className='text-center text-lg'>Imágenes</CardTitle>
-            </CardHeader>
-            <CardContent className='p-6 sm:p-8'>
-              <p className='text-sm text-slate-500 mb-4'>
-                Selecciona una carpeta con las imágenes del sondeo. Se incluirán en la carpeta ZIP dentro de la carpeta <em>imagenes</em>.
-              </p>
-
-              <div className='flex flex-col gap-3'>
-                <input
-                  id='imagenes-carpeta'
-                  type='file'
-                  multiple
-                  accept='image/*'
-                  {...({ webkitdirectory: '', directory: '' } as any)}
-                  onChange={(e) => {
-                    const files = e.target.files
-                    if (!files) return
-                    setImages(Array.from(files))
-                  }}
-                  className='sr-only'
-                />
-
-                <label
-                  htmlFor='imagenes-carpeta'
-                  className='inline-flex w-fit cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50'
-                >
-                  Seleccionar carpeta de imágenes
-                </label>
-
-                <p className='text-sm text-slate-600'>
-                  {images?.length ? `${images.length} imágenes seleccionadas` : 'Ninguna carpeta seleccionada aún'}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
 
           <Card className='border-gray-200 shadow-xl shadow-slate-200/60 overflow-hidden'>
             <CardHeader className='border-b border-gray-200 bg-gradient-to-r from-slate-50 via-white to-emerald-50'>
@@ -451,16 +473,121 @@ export default function GenerarPage() {
             </CardContent>
           </Card>
 
-          {/* Perforaciones y parámetros no se solicitan en esta vista mínima; se preservan sin cambios en la plantilla */}
+          {/* Clasificación de suelo USCS */}
+          <Card className='border-gray-200 shadow-lg shadow-slate-200/50 overflow-hidden'>
+            <CardHeader className='border-b border-gray-200 bg-slate-50/80'>
+              <CardTitle className='text-center text-lg'>Clasificación de suelo (Laboratorio)</CardTitle>
+            </CardHeader>
+            <CardContent className='p-6 sm:p-8 space-y-5'>
+              {/* Clasificación general */}
+              <div className='space-y-2'>
+                <Label htmlFor='clasificacion-general'>Clasificación USCS (General)</Label>
+                <p className='text-xs text-slate-500'>Se aplica a todos los laboratorios del informe.</p>
+                <select
+                  id='clasificacion-general'
+                  value={clasificacionGeneral}
+                  onChange={(e) => setClasificacionGeneral(e.target.value)}
+                  className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm shadow-sm outline-none transition focus:border-blue-500'
+                >
+                  {USCS_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Toggle personalización */}
+              <label className='flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 select-none'>
+                <input
+                  type='checkbox'
+                  checked={personalizarPorLab}
+                  onChange={(e) => setPersonalizarPorLab(e.target.checked)}
+                  className='h-4 w-4 rounded accent-blue-600'
+                />
+                <span className='text-sm font-medium text-slate-700'>Personalizar clasificación por laboratorio</span>
+              </label>
+
+              {/* Selectores individuales */}
+              {personalizarPorLab && (
+                <div className='grid gap-3 sm:grid-cols-2'>
+                  {(['lab1', 'lab2', 'lab3', 'lab4'] as const).map((key, idx) => (
+                    <div key={key} className='space-y-1'>
+                      <Label htmlFor={`clf-${key}`} className='text-xs'>
+                        Laboratorio {idx + 1}{idx === 3 ? <span className='ml-1 text-slate-400'>(solo &gt;3 pisos)</span> : null}
+                      </Label>
+                      <select
+                        id={`clf-${key}`}
+                        value={clasificacionesPorLab[key]}
+                        onChange={(e) =>
+                          setClasificacionesPorLab((prev) => ({ ...prev, [key]: e.target.value }))
+                        }
+                        className='h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs shadow-sm outline-none transition focus:border-blue-500'
+                      >
+                        {USCS_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className='border-gray-200 shadow-lg shadow-slate-200/50 overflow-hidden'>
+            <CardHeader className='border-b border-gray-200 bg-slate-50/80'>
+              <CardTitle className='text-center text-lg'>Imágenes</CardTitle>
+            </CardHeader>
+            <CardContent className='p-6 sm:p-8'>
+              <p className='text-sm text-slate-500 mb-4'>
+                Selecciona una carpeta con las imágenes del sondeo. Se incluirán en la carpeta ZIP dentro de la carpeta <em>imagenes</em>.
+                <span className='text-red-500 font-medium'> Obligatorio para generar el ZIP.</span>
+              </p>
+
+              <div className='flex flex-col gap-3'>
+                {/* Input fixed at top-left so the browser never scrolls to it when focused */}
+                <input
+                  ref={fileInputRef}
+                  type='file'
+                  multiple
+                  {...({ webkitdirectory: '', directory: '' } as any)}
+                  onChange={(e) => {
+                    const files = e.target.files
+                    if (!files) return
+                    setImages(Array.from(files))
+                  }}
+                  className='fixed left-0 top-0 h-px w-px opacity-0 pointer-events-none'
+                  tabIndex={-1}
+                />
+
+                <button
+                  type='button'
+                  onClick={() => fileInputRef.current?.click()}
+                  className='inline-flex w-fit cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50'
+                >
+                  Seleccionar carpeta de imágenes
+                </button>
+
+                <p className={`text-sm ${images?.length ? 'text-green-600 font-medium' : 'text-red-500'}`}>
+                  {images?.length ? `${images.length} imágenes seleccionadas` : 'Ninguna carpeta seleccionada — requerida para continuar'}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
           <div className='flex flex-col items-center justify-center gap-3 sm:flex-row'>
             <Button
               variant='outline'
               onClick={() => {
+                try { sessionStorage.removeItem(FORM_STORAGE_KEY) } catch {}
                 setProyectoUbicacion('')
+                setCliente('')
                 setFechaRegistro('')
                 setPisos('')
                 setSoilLayers(DEFAULT_SOIL_LAYERS.map((layer) => ({ ...layer })))
+                setClasificacionGeneral('')
+                setPersonalizarPorLab(false)
+                setClasificacionesPorLab(DEFAULT_CLASIFICACIONES)
+                setImages(null)
                 setDownloadUrl('')
                 setErrorMessage('')
                 setSuccessMessage('')

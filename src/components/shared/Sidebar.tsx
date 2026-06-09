@@ -19,12 +19,12 @@ const navItems = [
     icon: ClipboardList,
     description: 'Generar Automatización',
   },
-  {
-    title: 'Historial',
-    href: '/history',
-    icon: Clock,
-    description: 'Historial de Proyectos',
-  },
+  // {
+  //   title: 'Historial',
+  //   href: '/history',
+  //   icon: Clock,
+  //   description: 'Historial de Proyectos',
+  // },
   // {
   //   title: 'IA',
   //   href: '/ai',
