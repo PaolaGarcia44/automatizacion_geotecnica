@@ -25,6 +25,11 @@ export interface ParametroRangoData {
   unidad_geologica?: string | null
 }
 
+export interface WordMunicipio {
+  municipio: string
+  filename: string
+}
+
 export interface DocumentGenerationRequest {
   proyecto_ubicacion: string
   cliente?: string
@@ -35,6 +40,8 @@ export interface DocumentGenerationRequest {
   template_ids?: string[]
   clasificacion_suelo?: string
   clasificaciones_por_lab?: Record<string, string>
+  municipio_word?: string
+  word_template_filename?: string
 }
 
 export interface DocumentGenerationResponse {
@@ -111,6 +118,8 @@ export const generateDocuments = async (
     if (request.clasificaciones_por_lab && Object.keys(request.clasificaciones_por_lab).length > 0) {
       form.append('clasificaciones_por_lab', JSON.stringify(request.clasificaciones_por_lab))
     }
+    if (request.municipio_word) form.append('municipio_word', request.municipio_word)
+    if (request.word_template_filename) form.append('word_template_filename', request.word_template_filename)
 
     if (images && images.length) {
       images.forEach((file) => form.append('files', file, file.name))
@@ -138,6 +147,20 @@ export const generateDocuments = async (
       success: false,
       message: `Error: ${message}`,
     }
+  }
+}
+
+/**
+ * Obtener lista de municipios disponibles en plantillas Word
+ */
+export const getWordMunicipios = async (): Promise<WordMunicipio[]> => {
+  try {
+    const response = await fetch(`${API_URL}/api/word-municipios`)
+    if (!response.ok) return []
+    const data = await response.json()
+    return Array.isArray(data.municipios) ? data.municipios : []
+  } catch {
+    return []
   }
 }
 

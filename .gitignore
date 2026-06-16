@@ -42,3 +42,7 @@ yarn-error.log*
 # OS
 Thumbs.db
 .env
+
+# Plantillas Word (12 GB - demasiado grandes para GitHub, se guardan en OneDrive)
+backend/templates/word/*.docx
+backend/templates/word/*.doc

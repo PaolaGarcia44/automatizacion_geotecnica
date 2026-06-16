@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
-import { generateDocuments, buildDownloadUrl, downloadGeneratedFile, type PerforacionData } from '@/services/documentService'
+import { generateDocuments, getWordMunicipios, buildDownloadUrl, downloadGeneratedFile, type PerforacionData, type WordMunicipio } from '@/services/documentService'
 import { Building2, Check, AlertCircle, Download, Plus, X } from 'lucide-react'
 import { MainLayout } from '@/layouts/MainLayout'
 import { Button } from '@/components/ui/button'
@@ -97,6 +97,34 @@ const DEFAULT_SOIL_LAYERS: SoilLayerForm[] = [
 
 const FORM_STORAGE_KEY = 'autogeo-form'
 
+// Static fallback list — works without backend connection
+const MUNICIPIOS_ESTATICOS: string[] = [
+  'Abejorral','Abriaquí','Alejandría','Amagá','Andes','Angostura','Anzá',
+  'Apartadó','Arboletes','Argelia','Barbosa','Bello','Betania','Betulia',
+  'Briceño','Buriticá','Cáceres','Caicedo','Caldas','Campamento','Cañasgordas',
+  'Caracolí','Caramanta','Carepa','El Carmen','El Carmen de Viboral',
+  'Carolina','Caucasia','Chigorodó','Cisneros','Cocorná','Concepción',
+  'Concordia','Copacabana','Dabeiba','Don Matías','Ebéjico','El Bagre',
+  'Entrerríos','Envigado','Fredonia','Frontino','Giraldo','Girardota',
+  'Gómez Plata','Granada','Guadalupe','Guarne','Guatapé','Heliconia',
+  'Hispania','Itagüí','Ituango','Jardín','Jericó','La Ceja','La Estrella',
+  'La Pintada','La Unión','Liborina','Maceo','Marinilla','Medellín',
+  'Montebello','Murindó','Mutatá','Nechí','Necoclí','Olaya','El Peñol',
+  'Peque','Pueblorrico','Puerto Berrío','Puerto Nare','Puerto Triunfo',
+  'Remedios','El Retiro','Rionegro','Sabaneta','Salgar','San Andrés de Cuerquia',
+  'San Carlos','San Francisco','San Jerónimo','San José de la Montaña',
+  'San Juan de Urabá','San Luis','San Pedro','San Rafael','San Roque',
+  'San Vicente','Santa Bárbara','Santa Fe de Antioquia','Santa Rosa',
+  'Santo Domingo','El Santuario','Santuario','Segovia','Sonsón','Sopetrán',
+  'Támesis','Tarazá','Tarso','Titiribí','Toledo','Turbo','Uramita','Urrao',
+  'Valdivia','Valparaíso','Vegachí','Venecia','Vigía del Fuerte','Yalí',
+  'Yarumal','Yolombó','Yondó','Zaragoza','Angélópolis',
+  'San Antonio de Prado','Santa Elena','San Cristóbal','Altavista','Llanogrande',
+  'Buga','Puerto Boyacá',
+]
+
+interface MunicipioOption { name: string; filename?: string }
+
 export default function GenerarPage() {
   const { soilTypes, addSoilType, removeSoilType, isLoaded } = useSoilTypes()
   const [showSuccessModal, setShowSuccessModal] = useState(false)
@@ -116,6 +144,38 @@ export default function GenerarPage() {
   const [newSoilType, setNewSoilType] = useState('')
   const [showCustomSoilInput, setShowCustomSoilInput] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Municipality autocomplete state
+  const [munInput, setMunInput] = useState('')
+  const [munOption, setMunOption] = useState<MunicipioOption | null>(null)
+  const [munDropdownOpen, setMunDropdownOpen] = useState(false)
+  const [munOptions, setMunOptions] = useState<MunicipioOption[]>(
+    MUNICIPIOS_ESTATICOS.map((n) => ({ name: n }))
+  )
+
+  // Fetch from backend to enrich with filenames; fallback = static list
+  useEffect(() => {
+    getWordMunicipios().then((list) => {
+      if (!list.length) return
+      const backendMap = new Map(list.map((m) => [m.municipio.toLowerCase(), m.filename]))
+      const merged: MunicipioOption[] = MUNICIPIOS_ESTATICOS.map((name) => ({
+        name,
+        filename: backendMap.get(name.toLowerCase()),
+      }))
+      list.forEach((m) => {
+        const key = m.municipio.toLowerCase()
+        if (!MUNICIPIOS_ESTATICOS.some((s) => s.toLowerCase() === key))
+          merged.push({ name: m.municipio, filename: m.filename })
+      })
+      setMunOptions(merged.sort((a, b) => a.name.localeCompare(b.name, 'es')))
+    })
+  }, [])
+
+  const munSuggestions = munInput.trim().length === 0
+    ? []
+    : munOptions
+        .filter((m) => m.name.toLowerCase().includes(munInput.toLowerCase()))
+        .slice(0, 20)
 
   // Restore form data from sessionStorage after mount (client-only, avoids hydration mismatch)
   useEffect(() => {
@@ -212,6 +272,9 @@ export default function GenerarPage() {
         clasificaciones_por_lab: personalizarPorLab
           ? { '4': clasificacionesPorLab.lab1, '5': clasificacionesPorLab.lab2, '6': clasificacionesPorLab.lab3, '7': clasificacionesPorLab.lab4 }
           : undefined,
+        // Municipality for the Word informe
+        municipio_word: (munOption?.name || munInput.trim()) || undefined,
+        word_template_filename: munOption?.filename || undefined,
       }
 
       const response = await generateDocuments(payload, images ?? undefined)
@@ -311,6 +374,81 @@ export default function GenerarPage() {
                     className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm'
                   />
                 </div>
+              </div>
+
+              {/* ── Municipio del informe Word — autocomplete ──────────────── */}
+              <div className='border-t border-slate-100 pt-5 space-y-2'>
+                <Label>Municipio del informe Word</Label>
+                <p className='text-xs text-slate-500'>
+                  Escribe el nombre del municipio. Si existe plantilla propia se usará automáticamente; si no, se usará la plantilla base.
+                </p>
+
+                <div className='relative'>
+                  <Input
+                    placeholder='Ej: Rionegro, El Retiro, Envigado...'
+                    value={munInput}
+                    autoComplete='off'
+                    onChange={(e) => {
+                      setMunInput(e.target.value)
+                      setMunOption(null)
+                      setMunDropdownOpen(true)
+                    }}
+                    onFocus={() => setMunDropdownOpen(true)}
+                    onBlur={() => setTimeout(() => setMunDropdownOpen(false), 150)}
+                    className='h-11 rounded-xl border-slate-200 bg-white/90 shadow-sm pr-9'
+                  />
+                  {munInput && (
+                    <button
+                      type='button'
+                      onMouseDown={() => { setMunInput(''); setMunOption(null) }}
+                      className='absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600'
+                    >
+                      <X className='h-4 w-4' />
+                    </button>
+                  )}
+
+                  {munDropdownOpen && munSuggestions.length > 0 && (
+                    <div className='absolute z-50 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden'>
+                      <div className='max-h-52 overflow-y-auto'>
+                        {munSuggestions.map((m, i) => (
+                          <button
+                            key={i}
+                            type='button'
+                            onMouseDown={() => {
+                              setMunInput(m.name)
+                              setMunOption(m)
+                              setMunDropdownOpen(false)
+                            }}
+                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-2 ${
+                              munOption?.name === m.name
+                                ? 'bg-emerald-50 text-emerald-800 font-medium'
+                                : 'text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            <span>{m.name}</span>
+                            {m.filename && (
+                              <span className='text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5 whitespace-nowrap'>
+                                plantilla disponible
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {munOption?.filename && (
+                  <p className='flex items-center gap-1.5 text-xs text-emerald-700 font-medium'>
+                    <Check className='h-3.5 w-3.5' />
+                    Se usará la plantilla Word de <strong>{munOption.name}</strong>
+                  </p>
+                )}
+                {munInput.trim() && !munOption && (
+                  <p className='text-xs text-slate-500'>
+                    Municipio personalizado — se usará la plantilla base con el nombre &ldquo;{munInput.trim()}&rdquo;
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -591,6 +729,8 @@ export default function GenerarPage() {
                 setDownloadUrl('')
                 setErrorMessage('')
                 setSuccessMessage('')
+                setMunInput('')
+                setMunOption(null)
               }}
               className='h-12 min-w-40 rounded-xl border-slate-300 bg-white/90 px-6 shadow-sm'
             >

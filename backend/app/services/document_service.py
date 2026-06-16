@@ -317,6 +317,8 @@ class DocumentService:
         project_id: Optional[str] = None,
         clasificacion_suelo: Optional[str] = None,
         clasificaciones_por_lab: Optional[Dict[str, str]] = None,
+        municipio_word: Optional[str] = None,
+        word_template_filename: Optional[str] = None,
     ) -> Dict:
         """Generate the Excel file from the selected template."""        
         try:
@@ -434,7 +436,8 @@ class DocumentService:
 
                 client_slug = self._slugify_filename(str(cliente or '').strip(), 'cliente')[:30]
                 project_slug = self._slugify_filename(proyecto_upper, 'proyecto')[:30]
-                zip_base_name = f"{client_slug} - {project_slug}.zip"
+                municipio_slug = self._slugify_filename(str(municipio_word or '').strip(), '')[:20] if municipio_word else ''
+                zip_base_name = f"{client_slug} - {project_slug}{' - ' + municipio_slug if municipio_slug else ''}.zip"
                 zip_path = self.excel_service.generated_dir / zip_base_name
 
                 output_files = []
@@ -571,6 +574,8 @@ class DocumentService:
                         project_id=project_id,
                         proyecto_ubicacion=proyecto_upper,
                         fecha_registro=excel_data.get("fecha_registro_original") or fecha_registro,
+                        municipio_word=municipio_word or None,
+                        template_filename=word_template_filename or None,
                     )
                     output_files.append(informe_file)
                     zip_file.write(

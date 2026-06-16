@@ -22,6 +22,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["documentos"])
 
 
+@router.get(
+    "/word-municipios",
+    summary="Municipios disponibles en plantillas Word",
+    description="Lista de municipios que tienen plantilla Word en el servidor",
+)
+async def list_word_municipios():
+    try:
+        from app.services.word_service import word_service as _ws
+        municipios = _ws.get_available_municipios()
+        return {"municipios": municipios}
+    except Exception as e:
+        logger.error("Error al listar municipios Word: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al listar municipios: {str(e)}",
+        )
+
+
 @router.post(
     "/generate",
     response_model=DocumentGenerationResponse,
@@ -40,6 +58,8 @@ async def generate_documents(
     template_ids: Optional[str] = Form(None),
     clasificacion_suelo: Optional[str] = Form(None),
     clasificaciones_por_lab: Optional[str] = Form(None),
+    municipio_word: Optional[str] = Form(None),
+    word_template_filename: Optional[str] = Form(None),
     files: list[UploadFile] | None = File(None),
 ) -> DocumentGenerationResponse:
     try:
@@ -92,6 +112,8 @@ async def generate_documents(
             project_id=project_id,
             clasificacion_suelo=clasificacion_suelo or None,
             clasificaciones_por_lab=clf_por_lab,
+            municipio_word=municipio_word or None,
+            word_template_filename=word_template_filename or None,
         )
 
         return DocumentGenerationResponse(**result)
