@@ -1,8 +1,30 @@
+# ── Core web API (required for FastAPI server mode) ──────────────────────────
 fastapi>=0.115.0
 uvicorn>=0.30.0
 pydantic>=2.11.0
 pydantic-settings>=2.7.0
 python-multipart>=0.0.9
+
+# ── Excel / Word generation (required) ───────────────────────────────────────
 openpyxl>=3.1.5
 python-docx>=1.1.2
-pywin32>=306
+pywin32>=306          # Windows COM for .xls editing (legacy P-1 to P-4 templates)
+
+# ── Stratigraphic profile: SVG core (no extra deps — uses Python stdlib only)
+
+# ── Stratigraphic profile: PDF export (install ONE of the following) ──────────
+# Option A — best fidelity, needs Cairo DLLs on Windows (via GTK3 runtime or MSYS2):
+#   pip install cairosvg
+#
+# Option B — pure Python wheels, no native DLLs, recommended for PyInstaller:
+#   pip install svglib>=1.5.1 reportlab>=4.0.0
+#
+# Both options also enable PNG export (cairosvg natively; svglib needs Pillow):
+#   pip install Pillow>=10.0.0
+
+# ── Desktop packaging notes ──────────────────────────────────────────────────
+# PyInstaller one-file bundle (no web server required):
+#   pyinstaller --onefile profile_service.py
+#
+# For the full web-app wrapped in Electron, all Python dependencies above are
+# bundled by PyInstaller; the frontend is served by Electron's built-in Chromium.

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
-import { generateDocuments, getWordMunicipios, buildDownloadUrl, downloadGeneratedFile, type PerforacionData, type WordMunicipio } from '@/services/documentService'
+import { generateDocuments, getWordMunicipios, buildDownloadUrl, downloadGeneratedFile, type PerforacionData, type WordMunicipio, type ValoresLaboratorio } from '@/services/documentService'
 import { Building2, Check, AlertCircle, Download, Plus, X } from 'lucide-react'
 import { MainLayout } from '@/layouts/MainLayout'
 import { Button } from '@/components/ui/button'
@@ -83,6 +83,39 @@ interface ClasificacionesPorLab {
 
 const DEFAULT_CLASIFICACIONES: ClasificacionesPorLab = { lab1: '', lab2: '', lab3: '', lab4: '' }
 
+interface ValoresLabForm {
+  limite_liquido: string
+  limite_plastico: string
+  humedad: string
+}
+
+const DEFAULT_VALORES_LAB: ValoresLabForm = { limite_liquido: '', limite_plastico: '', humedad: '' }
+
+interface ValoresLabPorLab {
+  lab1: ValoresLabForm
+  lab2: ValoresLabForm
+  lab3: ValoresLabForm
+  lab4: ValoresLabForm
+}
+
+const DEFAULT_VALORES_LAB_POR_LAB: ValoresLabPorLab = {
+  lab1: { ...DEFAULT_VALORES_LAB },
+  lab2: { ...DEFAULT_VALORES_LAB },
+  lab3: { ...DEFAULT_VALORES_LAB },
+  lab4: { ...DEFAULT_VALORES_LAB },
+}
+
+/** Accept both "45.6" and "45,6". Returns NaN on invalid input. */
+function parseLabValue(raw: string): number {
+  return parseFloat(raw.replace(',', '.'))
+}
+
+function isValidLabField(raw: string): boolean {
+  if (!raw.trim()) return true          // optional — empty is fine
+  const n = parseLabValue(raw)
+  return !isNaN(n) && n >= 0
+}
+
 interface SoilLayerForm {
   profundidad_z: string
   tipo_suelo_principal: string
@@ -141,6 +174,7 @@ export default function GenerarPage() {
   const [clasificacionGeneral, setClasificacionGeneral] = useState('')
   const [personalizarPorLab, setPersonalizarPorLab] = useState(false)
   const [clasificacionesPorLab, setClasificacionesPorLab] = useState<ClasificacionesPorLab>(DEFAULT_CLASIFICACIONES)
+  const [valoresLabPorLab, setValoresLabPorLab] = useState<ValoresLabPorLab>(DEFAULT_VALORES_LAB_POR_LAB)
   const [newSoilType, setNewSoilType] = useState('')
   const [showCustomSoilInput, setShowCustomSoilInput] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -191,6 +225,7 @@ export default function GenerarPage() {
       if (d.clasificacionGeneral) setClasificacionGeneral(d.clasificacionGeneral)
       if (d.personalizarPorLab !== undefined) setPersonalizarPorLab(d.personalizarPorLab)
       if (d.clasificacionesPorLab) setClasificacionesPorLab(d.clasificacionesPorLab)
+      if (d.valoresLabPorLab) setValoresLabPorLab(d.valoresLabPorLab)
     } catch {}
   }, [])
 
@@ -199,10 +234,10 @@ export default function GenerarPage() {
     try {
       sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify({
         proyectoUbicacion, cliente, fechaRegistro, pisos,
-        soilLayers, clasificacionGeneral, personalizarPorLab, clasificacionesPorLab,
+        soilLayers, clasificacionGeneral, personalizarPorLab, clasificacionesPorLab, valoresLabPorLab,
       }))
     } catch {}
-  }, [proyectoUbicacion, cliente, fechaRegistro, pisos, soilLayers, clasificacionGeneral, personalizarPorLab, clasificacionesPorLab])
+  }, [proyectoUbicacion, cliente, fechaRegistro, pisos, soilLayers, clasificacionGeneral, personalizarPorLab, clasificacionesPorLab, valoresLabPorLab])
 
   const addSoilLayer = () => {
     setSoilLayers((prev) => [...prev, { profundidad_z: '', tipo_suelo_principal: '', color_predominante: '' }])
@@ -260,6 +295,28 @@ export default function GenerarPage() {
         })
         .filter((item): item is PerforacionData => item !== null)
 
+      // Build per-lab manual values — only include fields that are valid and non-empty
+      const labKeyToTemplateId: Record<string, string> = { lab1: '4', lab2: '5', lab3: '6', lab4: '7' }
+      const valoresLabPorLabPayload: Record<string, ValoresLaboratorio> = {}
+      if (personalizarPorLab) {
+        for (const [labKey, templateId] of Object.entries(labKeyToTemplateId)) {
+          const vlRaw = valoresLabPorLab[labKey as keyof ValoresLabPorLab]
+          const vl: ValoresLaboratorio = {}
+          if (vlRaw.limite_liquido.trim() && isValidLabField(vlRaw.limite_liquido)) {
+            vl.limite_liquido = parseLabValue(vlRaw.limite_liquido)
+          }
+          if (vlRaw.limite_plastico.trim() && isValidLabField(vlRaw.limite_plastico)) {
+            vl.limite_plastico = parseLabValue(vlRaw.limite_plastico)
+          }
+          if (vlRaw.humedad.trim() && isValidLabField(vlRaw.humedad)) {
+            vl.humedad = parseLabValue(vlRaw.humedad)
+          }
+          if (Object.keys(vl).length > 0) {
+            valoresLabPorLabPayload[templateId] = vl
+          }
+        }
+      }
+
       const payload = {
         // backend decidirá la plantilla según 'pisos' y generará perforaciones por defecto
         proyecto_ubicacion: proyectoUbicacion.toUpperCase(),
@@ -272,6 +329,7 @@ export default function GenerarPage() {
         clasificaciones_por_lab: personalizarPorLab
           ? { '4': clasificacionesPorLab.lab1, '5': clasificacionesPorLab.lab2, '6': clasificacionesPorLab.lab3, '7': clasificacionesPorLab.lab4 }
           : undefined,
+        valores_laboratorio_por_lab: Object.keys(valoresLabPorLabPayload).length > 0 ? valoresLabPorLabPayload : undefined,
         // Municipality for the Word informe
         municipio_word: (munOption?.name || munInput.trim()) || undefined,
         word_template_filename: munOption?.filename || undefined,
@@ -535,8 +593,8 @@ export default function GenerarPage() {
                       <Input
                         id={`profundidad-${index}`}
                         type='number'
-                        step='0.01'
-                        min='0'
+                        step='1'
+                        min='0.45'
                         placeholder='Ej: 0.45'
                         value={layer.profundidad_z}
                         onChange={(e) => {
@@ -644,19 +702,19 @@ export default function GenerarPage() {
                 <span className='text-sm font-medium text-slate-700'>Personalizar clasificación por laboratorio</span>
               </label>
 
-              {/* Selectores individuales */}
+              {/* Selectores individuales con valores manuales por laboratorio */}
               {personalizarPorLab && (
-                <div className='grid gap-3 sm:grid-cols-2'>
-                  {(['lab1', 'lab2', 'lab3', 'lab4'] as const).map((key, idx) => (
-                    <div key={key} className='space-y-1'>
-                      <Label htmlFor={`clf-${key}`} className='text-xs'>
-                        Laboratorio {idx + 1}{idx === 3 ? <span className='ml-1 text-slate-400'>(solo &gt;3 pisos)</span> : null}
+                <div className='grid gap-4 sm:grid-cols-2'>
+                  {(['lab1', 'lab2', 'lab3', 'lab4'] as const).map((labKey, idx) => (
+                    <div key={labKey} className='rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2'>
+                      <Label htmlFor={`clf-${labKey}`} className='text-xs font-semibold text-slate-700'>
+                        Laboratorio {idx + 1}{idx === 3 ? <span className='ml-1 font-normal text-slate-400'>(solo &gt;3 pisos)</span> : null}
                       </Label>
                       <select
-                        id={`clf-${key}`}
-                        value={clasificacionesPorLab[key]}
+                        id={`clf-${labKey}`}
+                        value={clasificacionesPorLab[labKey]}
                         onChange={(e) =>
-                          setClasificacionesPorLab((prev) => ({ ...prev, [key]: e.target.value }))
+                          setClasificacionesPorLab((prev) => ({ ...prev, [labKey]: e.target.value }))
                         }
                         className='h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs shadow-sm outline-none transition focus:border-blue-500'
                       >
@@ -664,6 +722,44 @@ export default function GenerarPage() {
                           <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
                       </select>
+
+                      {/* Valores manuales para este laboratorio */}
+                      <div className='pt-1 space-y-1'>
+                        <p className='text-xs text-slate-500'>Valores manuales — opcional</p>
+                        <div className='grid grid-cols-3 gap-1.5'>
+                          {(
+                            [
+                              { field: 'limite_liquido', placeholder: 'LL' },
+                              { field: 'limite_plastico', placeholder: 'LP' },
+                              { field: 'humedad', placeholder: '% Hum' },
+                            ] as { field: keyof ValoresLabForm; placeholder: string }[]
+                          ).map(({ field, placeholder }) => {
+                            const raw = valoresLabPorLab[labKey][field]
+                            const invalid = !isValidLabField(raw)
+                            return (
+                              <div key={field}>
+                                <Input
+                                  type='text'
+                                  inputMode='decimal'
+                                  placeholder={placeholder}
+                                  value={raw}
+                                  onChange={(e) =>
+                                    setValoresLabPorLab((prev) => ({
+                                      ...prev,
+                                      [labKey]: { ...prev[labKey], [field]: e.target.value },
+                                    }))
+                                  }
+                                  className={`h-8 rounded-lg text-xs shadow-sm ${
+                                    invalid
+                                      ? 'border-red-400 bg-red-50'
+                                      : 'border-slate-200 bg-white focus:border-blue-500'
+                                  }`}
+                                />
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -725,6 +821,7 @@ export default function GenerarPage() {
                 setClasificacionGeneral('')
                 setPersonalizarPorLab(false)
                 setClasificacionesPorLab(DEFAULT_CLASIFICACIONES)
+                setValoresLabPorLab(DEFAULT_VALORES_LAB_POR_LAB)
                 setImages(null)
                 setDownloadUrl('')
                 setErrorMessage('')

@@ -1,0 +1,10 @@
+INFO:     Started server process [21068]
+INFO:     Waiting for application startup.
+2026-06-22 17:54:01,185 - main - INFO - ============================================================
+2026-06-22 17:54:01,185 - main - INFO - AutoGeo Backend iniciado
+2026-06-22 17:54:01,185 - main - INFO - Ambiente: DEBUG
+2026-06-22 17:54:01,185 - main - INFO - Directorio de plantillas: C:\Users\Paola\OneDrive - Tecnologico de Antioquia Institucion Universitaria\Escritorio\Automatización geotecnica\automatizacion_geotecnica\backend\templates\excel
+2026-06-22 17:54:01,185 - main - INFO - Directorio de salida: C:\Users\Paola\OneDrive - Tecnologico de Antioquia Institucion Universitaria\Escritorio\Automatización geotecnica\automatizacion_geotecnica\backend\generated
+2026-06-22 17:54:01,186 - main - INFO - ============================================================
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)

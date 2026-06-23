@@ -60,6 +60,8 @@ async def generate_documents(
     clasificaciones_por_lab: Optional[str] = Form(None),
     municipio_word: Optional[str] = Form(None),
     word_template_filename: Optional[str] = Form(None),
+    valores_laboratorio: Optional[str] = Form(None),
+    valores_laboratorio_por_lab: Optional[str] = Form(None),
     files: list[UploadFile] | None = File(None),
 ) -> DocumentGenerationResponse:
     try:
@@ -98,6 +100,20 @@ async def generate_documents(
             except Exception:
                 clf_por_lab = None
 
+        vl = None
+        if valores_laboratorio:
+            try:
+                vl = json.loads(valores_laboratorio)
+            except Exception:
+                vl = None
+
+        vl_por_lab = None
+        if valores_laboratorio_por_lab:
+            try:
+                vl_por_lab = json.loads(valores_laboratorio_por_lab)
+            except Exception:
+                vl_por_lab = None
+
         result = document_service.generate_documents(
             template_id=template_id,
             template_ids=json.loads(template_ids) if template_ids else None,
@@ -114,6 +130,8 @@ async def generate_documents(
             clasificaciones_por_lab=clf_por_lab,
             municipio_word=municipio_word or None,
             word_template_filename=word_template_filename or None,
+            valores_laboratorio=vl,
+            valores_laboratorio_por_lab=vl_por_lab,
         )
 
         return DocumentGenerationResponse(**result)

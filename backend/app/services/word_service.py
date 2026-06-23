@@ -15,7 +15,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-INFORME_TEMPLATE_FILENAME = "INFORME SAN PEDRO 2026-03-26.docx"
+INFORME_TEMPLATE_FILENAME = "INFORME BASE SAN PEDRO.docx"
 
 # ── Municipality list for template matching ──────────────────────────────────
 _LUGARES_RAW: List[str] = [
@@ -245,8 +245,16 @@ class WordService:
         else:
             template_path = self.get_informe_template_path()
 
+        # If the selected or default template is missing, fall back to any available .docx
         if not template_path.exists():
-            raise FileNotFoundError(f"No se encontró la plantilla Word: {template_path}")
+            fallback = next(
+                (p for p in sorted(self.templates_dir.glob("*.docx")) if p.is_file()),
+                None,
+            )
+            if fallback is None:
+                raise FileNotFoundError(f"No se encontró la plantilla Word: {template_path}")
+            logger.warning("Plantilla '%s' no encontrada; usando '%s' como base.", template_path.name, fallback.name)
+            template_path = fallback
 
         # ── Build title and archive name ──────────────────────────────────────
         fecha_obj = self._parse_fecha(fecha_registro)

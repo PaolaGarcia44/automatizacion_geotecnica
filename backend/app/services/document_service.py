@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import uuid4
 from typing import Dict, List, Optional
 from copy import copy
+import math
 import re
 import shutil
 import unicodedata
@@ -19,6 +20,7 @@ from openpyxl.styles import Alignment, PatternFill
 from app.core.config import settings
 from app.services.excel_service import excel_service
 from app.services.word_service import word_service
+from app.services.profile_3d_service import profile_3d_service
 
 logger = logging.getLogger(__name__)
 
@@ -167,8 +169,14 @@ class DocumentService:
                 return source_value
 
             def _depth_floor(value) -> Optional[int]:
-                parsed_depth = _truncate_depth(value)
-                return parsed_depth if parsed_depth is not None else None
+                if value in (None, ""):
+                    return None
+                text = str(value).strip().replace(",", ".")
+                try:
+                    d = float(text)
+                    return math.ceil(d) if d > 0 else None
+                except Exception:
+                    return None
 
             depth_rows = list(range(5, max_depth_row + 1))
             if layers:
@@ -185,16 +193,20 @@ class DocumentService:
                     previous_floor = depth_floor
 
                 total_visible_rows = len(depth_rows)
+                # profundidad_z = depth where the layer STARTS.
+                # Span = next layer's ceil(depth) - this layer's ceil(depth).
+                # Last layer fills remaining rows.
                 spans: List[int] = []
-                previous_floor = 0
+                prev_depth_floor = 0
                 for index, (_, depth_floor) in enumerate(cleaned_layers):
-                    span_rows = max(1, depth_floor - previous_floor)
+                    if index + 1 < len(cleaned_layers):
+                        span_rows = max(1, depth_floor - prev_depth_floor)
+                    else:
+                        span_rows = max(1, total_visible_rows - sum(spans))
                     spans.append(span_rows)
-                    previous_floor = depth_floor
+                    prev_depth_floor = depth_floor
 
-                if spans and sum(spans) < total_visible_rows:
-                    spans[-1] += total_visible_rows - sum(spans)
-                elif spans and sum(spans) > total_visible_rows:
+                if spans and sum(spans) > total_visible_rows:
                     overflow = sum(spans) - total_visible_rows
                     spans[-1] = max(1, spans[-1] - overflow)
 
@@ -217,6 +229,12 @@ class DocumentService:
                 for row_number in depth_rows:
                     for column in mirror_columns:
                         worksheet[f"{column}{row_number}"].fill = PatternFill(fill_type=None)
+
+                # Clear L, M, N in entire depth range — only anchor rows will get values
+                for row_number in depth_rows:
+                    _clear_cell_if_writable(worksheet, f"L{row_number}")
+                    _clear_cell_if_writable(worksheet, f"M{row_number}")
+                    _clear_cell_if_writable(worksheet, f"N{row_number}")
 
                 current_row = depth_rows[0]
                 for index, ((layer, depth_floor), span_rows) in enumerate(zip(cleaned_layers, spans)):
@@ -256,9 +274,26 @@ class DocumentService:
                         if column == 'J':
                             i_terms = "+".join([f"I{row_number}" for row_number in range(current_row, row_end + 1)])
                             target_anchor.value = f"=({i_terms})/{span_rows}"
+                        elif column == 'L':
+                            target_anchor.value = 0
+                        elif column == 'M':
+                            if "15M" in profile_name or "25M" in profile_name:
+                                target_anchor.value = 0  # Cohesión for 15M/25M
+                            else:
+                                # 6M: M is di/Ni = espesor / N_promedio_estrato
+                                target_anchor.value = f"=D{current_row}/J{current_row}"
+                                target_anchor.number_format = "0.000"
                         else:
                             target_anchor.value = _copy_formula_or_value(f"{column}{source_row}", f"{column}{current_row}")
                         target_anchor.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+                    # 15M/25M: di/Ni is in column N (=D/K). 6M: di/Ni is in column M (=D/J), N is unused.
+                    if "15M" in profile_name or "25M" in profile_name:
+                        n_anchor = worksheet[f"N{current_row}"]
+                        if not isinstance(n_anchor, MergedCell):
+                            n_anchor.value = f"=D{current_row}/K{current_row}"
+                            n_anchor.number_format = "0.000"
+                            n_anchor.alignment = Alignment(horizontal="center", vertical="center")
 
                     if row_end > current_row:
                         worksheet.merge_cells(start_row=current_row, start_column=2, end_row=row_end, end_column=2)
@@ -319,6 +354,8 @@ class DocumentService:
         clasificaciones_por_lab: Optional[Dict[str, str]] = None,
         municipio_word: Optional[str] = None,
         word_template_filename: Optional[str] = None,
+        valores_laboratorio: Optional[Dict] = None,
+        valores_laboratorio_por_lab: Optional[Dict[str, Dict]] = None,
     ) -> Dict:
         """Generate the Excel file from the selected template."""        
         try:
@@ -426,14 +463,6 @@ class DocumentService:
                 correlation_template_id = '1' if nPisos <= 3 else '2' if nPisos <= 10 else '3'
                 laboratorio_template_ids = ['4', '5', '6'] if nPisos <= 3 else ['4', '5', '6', '7']
                 batch_templates = [capacity_template_id, correlation_template_id, *laboratorio_template_ids, '9']
-                if nPisos <= 3:
-                    perfil_template_name = 'PERFIL DEL SUELO 6M.xlsx'
-                elif nPisos <= 10:
-                    perfil_template_name = 'PERFIL DEL SUELO 15M.xlsx'
-                else:
-                    perfil_template_name = 'PERFIL DEL SUELO 25M.xlsx'
-                perfil_template_path = self.excel_service.templates_dir / perfil_template_name
-
                 client_slug = self._slugify_filename(str(cliente or '').strip(), 'cliente')[:30]
                 project_slug = self._slugify_filename(proyecto_upper, 'proyecto')[:30]
                 municipio_slug = self._slugify_filename(str(municipio_word or '').strip(), '')[:20] if municipio_word else ''
@@ -469,6 +498,10 @@ class DocumentService:
                             cls_for_template = clasificaciones_por_lab[str(current_template)] or None
                         else:
                             cls_for_template = clasificacion_suelo
+                        if valores_laboratorio_por_lab and str(current_template) in valores_laboratorio_por_lab:
+                            vl_for_template = valores_laboratorio_por_lab[str(current_template)] or None
+                        else:
+                            vl_for_template = valores_laboratorio
                         generated_file = self.excel_service.generate_excel(
                             template_id=current_template,
                             project_id=project_id,
@@ -476,6 +509,7 @@ class DocumentService:
                             perforaciones=default_perforaciones,
                             parametros=parametros or [],
                             clasificacion_suelo=cls_for_template,
+                            valores_laboratorio=vl_for_template,
                         )
                         output_files.append(generated_file)
 
@@ -547,28 +581,47 @@ class DocumentService:
                         output_files.append(generated_file)
                         zip_file.write(generated_file, arcname=self._sanitize_archive_name(archive_name))
 
-                    if perfil_template_path.exists():
+                    # Generate PERFIL DEL SUELO Excel and add to ZIP
+                    _perfil_excel_name = (
+                        "PERFIL DEL SUELO 6M.xlsx" if nPisos <= 3
+                        else "PERFIL DEL SUELO 15M.xlsx" if nPisos <= 10
+                        else "PERFIL DEL SUELO 25M.xlsx"
+                    )
+                    _perfil_template = self.excel_service.templates_dir / _perfil_excel_name
+                    if _perfil_template.exists():
                         try:
-                            perfil_generated_file = self._prepare_profile_file(
-                                source_template=perfil_template_path,
+                            _perfil_excel_path = self._prepare_profile_file(
+                                source_template=_perfil_template,
                                 project_id=project_id,
                                 project_value=proyecto_upper,
-                                fecha_value=excel_data.get("fecha_registro"),
+                                fecha_value=excel_data.get("fecha_registro_original"),
                                 fecha_original=excel_data.get("fecha_registro_original"),
                                 perforaciones=default_perforaciones,
                             )
-                            output_files.append(perfil_generated_file)
-                            zip_file.write(perfil_generated_file, arcname=self._sanitize_archive_name(perfil_template_name))
-                            perfil_added = True
-                        except PermissionError:
-                            perfil_error = f"No se pudo agregar el perfil de suelo requerido ({perfil_template_name}) porque está abierto en Excel: {perfil_template_path}"
-                            logger.warning(perfil_error)
+                            output_files.append(_perfil_excel_path)
+                            zip_file.write(_perfil_excel_path, arcname=_perfil_excel_name)
                         except Exception:
-                            perfil_error = f"No se pudo agregar el perfil de suelo requerido ({perfil_template_name}) al ZIP"
-                            logger.warning(perfil_error, exc_info=True)
+                            logger.warning("No se pudo generar el PERFIL DEL SUELO Excel", exc_info=True)
                     else:
-                        perfil_error = f"No se encontró la plantilla de perfil de suelo requerida: {perfil_template_path}"
-                        logger.warning(perfil_error)
+                        logger.warning("Plantilla no encontrada: %s", _perfil_template)
+
+                    # Perfil estratigráfico 3D (único — el 2D no se incluye)
+                    try:
+                        svg_3d_filename = f"{project_id}_PERFIL_3D.svg"
+                        svg_3d_path = self.excel_service.generated_dir / svg_3d_filename
+                        profile_3d_service.save_profile_3d(
+                            perforaciones=default_perforaciones,
+                            output_path=svg_3d_path,
+                            project_name=proyecto_upper,
+                            sondeo=sondeo or "P-1",
+                            fecha=excel_data.get("fecha_registro_original"),
+                        )
+                        output_files.append(svg_3d_path)
+                        zip_file.write(svg_3d_path, arcname="PERFIL ESTRATIGRAFICO 3D.svg")
+                        perfil_added = True
+                    except Exception:
+                        perfil_error = "No se pudo generar el perfil estratigráfico 3D"
+                        logger.warning(perfil_error, exc_info=True)
 
                     informe_file, informe_archive_name = word_service.generate_informe(
                         project_id=project_id,
@@ -594,7 +647,7 @@ class DocumentService:
                         logger.debug("No se pudieron agregar imágenes al ZIP", exc_info=True)
 
                 if not perfil_added:
-                    raise RuntimeError(perfil_error or f"No se pudo incluir el perfil de suelo requerido: {perfil_template_name}")
+                    raise RuntimeError(perfil_error or "No se pudo generar el perfil estratigráfico")
 
                 return {
                     "success": True,

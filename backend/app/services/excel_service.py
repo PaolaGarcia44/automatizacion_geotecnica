@@ -16,7 +16,7 @@ from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
  
 import openpyxl
 from openpyxl import load_workbook
@@ -339,17 +339,16 @@ class ExcelService:
                         pass
 
             # === PROPORTIONAL COLUMN I — Descripción Macroscópica ===
-            # Mirrors plantilla_1.xlsx column Q proportional logic (_build_soil_segments).
-            # Each soil layer occupies a fraction of I-J rows proportional to its depth.
-            # Placed AFTER depth scale expansion so the correct zone size is known.
+            # Uses _calc_layer_spans (same algorithm as column Q of the correlation .xlsx)
+            # so strata proportions are always identical between both documents.
             if soil_descriptions is not None:
-                _I_FIRST = 8   # Column I data starts at row 8 (same as depth scale)
+                _I_FIRST = 8
                 _ROWS_PER_LVL = 2
 
                 if expand_depth_levels is not None:
                     _i_total_rows = int(expand_depth_levels) * _ROWS_PER_LVL
                 else:
-                    _i_total_rows = 7 * _ROWS_PER_LVL  # default: 7 template levels
+                    _i_total_rows = 7 * _ROWS_PER_LVL
 
                 _i_last = _I_FIRST + _i_total_rows - 1
 
@@ -361,7 +360,7 @@ class ExcelService:
                 _zone.Font.Color = 0
                 _zone.Font.Bold = False
 
-                # Build parallel lists padded to the same length
+                # Build layer dicts compatible with _calc_layer_spans
                 _descs = list(soil_descriptions)
                 _colors = list(soil_colors) if soil_colors else []
                 _depths = list(depth_values) if depth_values else []
@@ -370,52 +369,45 @@ class ExcelService:
                 _colors += [""] * (_n - len(_colors))
                 _depths += [0.0] * (_n - len(_depths))
 
-                # Keep only layers that have a description or a color
-                _layers = [(d, c, z) for d, c, z in zip(_descs, _colors, _depths) if d or c]
+                _layer_dicts = [
+                    {"descripcion_suelo": d, "color_predominante": c, "profundidad_z": z}
+                    for d, c, z in zip(_descs, _colors, _depths)
+                    if d or c
+                ]
 
-                if _layers:
-                    # Total depth = maximum depth across all layers
-                    _valid_z = [z for _, _, z in _layers if z and z > 0]
-                    _total_z = max(_valid_z) if _valid_z else float(len(_layers))
-                    if _total_z <= 0:
-                        _total_z = float(len(_layers))
+                _layer_spans = self._calc_layer_spans(_layer_dicts, _i_total_rows)
 
-                    # Proportional row spans — same algorithm as _build_soil_segments
-                    _spans: List[int] = []
-                    _prev_z = 0.0
-                    for _d, _c, _z in _layers:
-                        _eff_z = _z if (_z and _z > 0) else (_prev_z + _total_z / len(_layers))
-                        _delta = max(0.0, _eff_z - _prev_z)
-                        _span = max(1, int(round(_delta / _total_z * _i_total_rows)))
-                        _spans.append(_span)
-                        _prev_z = _eff_z
+                # Coalesce adjacent segments with same description (mirrors column Q logic)
+                _coalesced: List[list] = []
+                for _lyr, _sp in _layer_spans:
+                    _dk = _lyr.get("descripcion_suelo", "")
+                    if _coalesced and _coalesced[-1][0].get("descripcion_suelo", "") == _dk:
+                        _coalesced[-1][1] += _sp
+                    else:
+                        _coalesced.append([_lyr, _sp])
+                _layer_spans = [tuple(x) for x in _coalesced]
 
-                    # Adjust last span so the total fills the zone exactly
-                    _diff = _i_total_rows - sum(_spans)
-                    if _spans:
-                        _spans[-1] = max(1, _spans[-1] + _diff)
-                        while sum(_spans) > _i_total_rows and _spans[-1] > 1:
-                            _spans[-1] -= 1
-
-                    _xl_center = -4108  # xlCenter for both h and v alignment
-                    _cur = _I_FIRST
-                    for (_d, _c, _z), _sp in zip(_layers, _spans):
-                        _end = min(_i_last, _cur + _sp - 1)
-                        _rng = worksheet.Range(f"I{_cur}:J{_end}")
-                        _rng.Merge()
-                        if _d:
-                            _rng.Value = str(_d)
-                        _rng.WrapText = True
-                        _rng.HorizontalAlignment = _xl_center
-                        _rng.VerticalAlignment = _xl_center
-                        _rng.Font.Size = 9
-                        if _c:
-                            _fh, _fnt = self._get_color_info(_c)
-                            _rng.Interior.Color = self._hex_to_xls_color(_fh)
-                            _rng.Font.Color = self._hex_to_xls_color(_fnt)
-                        _cur = _end + 1
-                        if _cur > _i_last:
-                            break
+                _xl_center = -4108  # xlCenter
+                _cur = _I_FIRST
+                for _lyr, _sp in _layer_spans:
+                    _end = min(_i_last, _cur + _sp - 1)
+                    _d = _lyr.get("descripcion_suelo", "")
+                    _c = _lyr.get("color_predominante", "")
+                    _rng = worksheet.Range(f"I{_cur}:J{_end}")
+                    _rng.Merge()
+                    if _d:
+                        _rng.Value = str(_d)
+                    _rng.WrapText = True
+                    _rng.HorizontalAlignment = _xl_center
+                    _rng.VerticalAlignment = _xl_center
+                    _rng.Font.Size = 9
+                    if _c:
+                        _fh, _fnt = self._get_color_info(_c)
+                        _rng.Interior.Color = self._hex_to_xls_color(_fh)
+                        _rng.Font.Color = self._hex_to_xls_color(_fnt)
+                    _cur = _end + 1
+                    if _cur > _i_last:
+                        break
 
             # === COLUMN C — Replace or redistribute soil-sketch images/shapes ===
             # If photo_paths is provided, delete the template sketches and insert
@@ -622,7 +614,10 @@ class ExcelService:
     def _get_color_info(self, color_name: Optional[str]) -> tuple:
         """Return (fill_hex_RRGGBB, font_hex_RRGGBB) for a color name."""
         normalized = self._normalize(color_name or "")
-        fill_hex = self._COLOR_MAP.get(normalized, "F4B183")
+        fill_hex = next(
+            (v for k, v in self._COLOR_MAP.items() if self._normalize(k) == normalized),
+            "F4B183",
+        )
         try:
             r = int(fill_hex[0:2], 16)
             g = int(fill_hex[2:4], 16)
@@ -677,102 +672,209 @@ class ExcelService:
         text = text.replace("de color", "").replace(" color ", " ")
         return " ".join(text.split())
 
-    def _build_soil_segments(self, worksheet, layers: List[dict], start_row: int, end_row: int) -> List[tuple]:
-        valid_layers = [layer for layer in layers if any((layer.get(key) for key in ("descripcion_suelo", "tipo_suelo_principal", "color_predominante")))]
+    def _calc_layer_spans(self, layers: List[dict], total_rows: int) -> List[tuple]:
+        """Proportional row-span calculator — single source of truth for strata layout.
+
+        Both column Q of the correlation (.xlsx) and column I of P-1/P-2/P-3/P-4
+        call this method so their stratum proportions are always identical.
+
+        Returns a list of (layer_dict, num_rows) pairs whose spans sum to total_rows.
+        """
+        valid_layers = [
+            l for l in layers
+            if any(l.get(k) for k in ("descripcion_suelo", "tipo_suelo_principal", "color_predominante"))
+        ]
         if not valid_layers:
             return []
 
-        depth_rows: List[tuple[int, float]] = []
-        for row_number in range(start_row, end_row + 1):
-            marker = self._parse_depth_value(worksheet[f"A{row_number}"].value)
-            if marker is not None:
-                depth_rows.append((row_number, marker))
-
-        if not depth_rows:
-            visible_rows = max(1, end_row - start_row + 1)
-            depths: List[float] = []
-            for index, layer in enumerate(valid_layers):
-                raw_depth = layer.get("profundidad_z")
-                try:
-                    depth = float(raw_depth)
-                except Exception:
-                    depth = float(index + 1)
-                if depth <= 0:
-                    depth = float(index + 1)
-                depths.append(depth)
-
-            if any(depths[index] <= depths[index - 1] for index in range(1, len(depths))):
-                depths = [float(index + 1) for index in range(len(valid_layers))]
-
-            total_depth = depths[-1] if depths[-1] > 0 else float(len(valid_layers))
-            if total_depth <= 0:
-                total_depth = float(len(valid_layers))
-
-            raw_spans: List[int] = []
-            previous_depth = 0.0
-            for index, depth in enumerate(depths):
-                delta = max(0.0, depth - previous_depth)
-                if index == len(depths) - 1 and delta <= 0:
-                    delta = total_depth - previous_depth
-                span_rows = int(round((delta / total_depth) * visible_rows)) if total_depth else 1
-                raw_spans.append(max(1, span_rows))
-                previous_depth = depth
-
-            difference = visible_rows - sum(raw_spans)
-            if raw_spans:
-                raw_spans[-1] = max(1, raw_spans[-1] + difference)
-                while sum(raw_spans) > visible_rows and raw_spans[-1] > 1:
-                    raw_spans[-1] -= 1
-
-            segments = []
-            current_row = start_row
-            for index, span_rows in enumerate(raw_spans):
-                row_end = min(end_row, current_row + span_rows - 1)
-                if index == len(raw_spans) - 1:
-                    row_end = end_row
-                segments.append((current_row, row_end, valid_layers[index]))
-                current_row = row_end + 1
-                if current_row > end_row:
-                    break
-
-            return segments
-
-        # If template provides explicit depth markers but user provided fewer layers,
-        # repeat the last provided layer until there are as many layers as depth markers.
-        if depth_rows and len(valid_layers) < len(depth_rows):
-            last = valid_layers[-1]
-            while len(valid_layers) < len(depth_rows):
-                # append a shallow copy so modifications don't affect original
-                valid_layers.append(dict(last))
-
-        depths: List[float] = []
-        for index, layer in enumerate(valid_layers):
-            raw_depth = layer.get("profundidad_z")
+        end_depths: List[float] = []
+        for layer in valid_layers:
             try:
-                depth = float(raw_depth)
+                d = float(layer.get("profundidad_z") or 0)
             except Exception:
-                depth = float(index + 1)
-            if depth <= 0:
-                depth = float(index + 1)
-            depths.append(depth)
+                d = 0.0
+            end_depths.append(d)
 
-        if any(depths[index] <= depths[index - 1] for index in range(1, len(depths))):
-            depths = [float(index + 1) for index in range(len(valid_layers))]
+        # Equal distribution fallback when no depths are provided
+        if all(d <= 0 for d in end_depths):
+            rows_per = max(1, total_rows // len(valid_layers))
+            result: List[tuple] = []
+            remaining = total_rows
+            for i, layer in enumerate(valid_layers):
+                if i == len(valid_layers) - 1:
+                    result.append((layer, max(1, remaining)))
+                else:
+                    span = max(1, min(rows_per, remaining - (len(valid_layers) - i - 1)))
+                    result.append((layer, span))
+                    remaining -= span
+            return result
 
-        segments = []
-        current_row = start_row
-        for index, depth in enumerate(depths):
-            row_end = end_row
-            for row_number, marker in depth_rows:
-                if marker >= depth:
-                    row_end = row_number
-                    break
-            segments.append((current_row, row_end, valid_layers[index]))
-            current_row = row_end + 1
-            if current_row > end_row:
+        # Proportional distribution based on profundidad_z
+        valid_depths = [d for d in end_depths if d > 0]
+        total_depth = max(valid_depths) if valid_depths else float(len(valid_layers))
+
+        raw_spans: List[list] = []
+        prev_depth = 0.0
+        for layer, end_d in zip(valid_layers, end_depths):
+            eff_d = end_d if end_d > 0 else (prev_depth + total_depth / len(valid_layers))
+            delta = max(0.0, eff_d - prev_depth)
+            span = max(1, int(round(delta / total_depth * total_rows)))
+            raw_spans.append([layer, span])
+            prev_depth = eff_d
+
+        # Adjust last span to fill exactly total_rows
+        diff = total_rows - sum(s for _, s in raw_spans)
+        if raw_spans:
+            raw_spans[-1][1] = max(1, raw_spans[-1][1] + diff)
+            while sum(s for _, s in raw_spans) > total_rows and raw_spans[-1][1] > 1:
+                raw_spans[-1][1] -= 1
+
+        return [(layer, span) for layer, span in raw_spans]
+
+    def _build_soil_segments(self, worksheet, layers: List[dict], start_row: int, end_row: int) -> List[tuple]:
+        """Convert layer list into (row_start, row_end, layer) segments.
+
+        Delegates to _calc_layer_spans so column Q proportions match column I
+        of P-1/P-2/P-3/P-4 exactly. The worksheet parameter is accepted for
+        signature compatibility but is no longer read.
+        """
+        total_rows = end_row - start_row + 1
+        layer_spans = self._calc_layer_spans(layers, total_rows)
+
+        segments: List[tuple] = []
+        cur = start_row
+        for layer, span in layer_spans:
+            seg_end = min(end_row, cur + span - 1)
+            segments.append((cur, seg_end, layer))
+            cur = seg_end + 1
+            if cur > end_row:
                 break
 
+        # Ensure last segment always reaches end_row
+        if segments:
+            last = segments[-1]
+            segments[-1] = (last[0], end_row, last[2])
+
         return segments
+
+    def _build_depth_soil_segments_exact(
+        self,
+        layers: List[dict],
+        start_row: int,
+        end_row: int,
+    ) -> List[tuple]:
+        """Build Q segments by matching fixed row depths to user-defined layer end-depths.
+
+        Row depths are 0.45, 1.45, 2.45, … starting at start_row.
+        For each row depth D:
+          - Find the last layer whose profundidad_z <= D → that layer covers the row.
+          - If D exceeds the deepest layer's end-depth → row is empty (not included).
+        Accepts comma or dot as decimal separator in profundidad_z.
+        """
+        def _to_float(v) -> float:
+            try:
+                return float(str(v or 0).replace(',', '.'))
+            except Exception:
+                return 0.0
+
+        valid_layers = [
+            layer for layer in layers
+            if any(layer.get(k) for k in ("descripcion_suelo", "tipo_suelo_principal", "color_predominante"))
+        ]
+        if not valid_layers:
+            return []
+
+        sorted_layers = sorted(
+            valid_layers,
+            key=lambda l: (_to_float(l.get('profundidad_z')) or float('inf')),
+        )
+        depths = [_to_float(l.get('profundidad_z')) for l in sorted_layers]
+        valid_depths = [d for d in depths if d > 0]
+        last_depth = max(valid_depths) if valid_depths else 0.0
+        if last_depth == 0.0:
+            return []
+
+        row_count = end_row - start_row + 1
+        last_layer_idx = len(sorted_layers) - 1
+        row_assignments: List = []
+        for i in range(row_count):
+            row_depth = round(0.45 + i * 1.0, 10)
+            if row_depth > last_depth + 1e-9:
+                # Extend the last defined layer to fill all remaining column A rows.
+                row_assignments.append(last_layer_idx)
+            else:
+                active_idx = None
+                for j, d in enumerate(depths):
+                    if d > 0 and d <= row_depth + 1e-9:
+                        active_idx = j
+                row_assignments.append(active_idx)
+
+        segments: List[tuple] = []
+        if not row_assignments:
+            return []
+
+        seg_idx = row_assignments[0]
+        seg_start = start_row
+
+        for i in range(1, len(row_assignments)):
+            cur_idx = row_assignments[i]
+            if cur_idx == seg_idx:
+                continue
+            if seg_idx is not None:
+                segments.append((seg_start, start_row + i - 1, sorted_layers[seg_idx]))
+            seg_idx = cur_idx
+            seg_start = start_row + i
+
+        if seg_idx is not None:
+            segments.append((seg_start, end_row, sorted_layers[seg_idx]))
+
+        return segments
+
+    def _apply_q_segment_format(
+        self,
+        sheet_obj,
+        row_start: int,
+        row_end: int,
+        layer: dict,
+        soil_text: str,
+    ) -> None:
+        """Apply visual format to one Q column segment.
+
+        Steps:
+          1. Fill EVERY cell in [row_start, row_end] with the layer colour so the
+             entire combined region has a uniform background (not just the anchor).
+          2. Merge the range when it spans more than one row.
+          3. Write the soil text once on the anchor (top-left cell), centred both
+             horizontally and vertically, with word-wrap enabled.
+
+        This is the single reusable function used for all three correlation
+        templates (1, 2, 3) so no formatting logic is duplicated.
+        """
+        fill, font_color = self._soil_style_from_color(layer.get('color_predominante'))
+
+        # Step 1 — colour every individual cell BEFORE merging
+        for _r in range(row_start, row_end + 1):
+            try:
+                sheet_obj.cell(row=_r, column=17).fill = fill
+            except Exception:
+                pass
+
+        # Step 2 — merge when multi-row
+        if row_start != row_end:
+            try:
+                sheet_obj.merge_cells(f"Q{row_start}:Q{row_end}")
+            except Exception:
+                pass
+
+        # Step 3 — text and formatting on the anchor only
+        q_anchor = sheet_obj[f'Q{row_start}']
+        q_anchor.value = soil_text
+        q_anchor.fill = fill  # re-confirm after merge (openpyxl may reset anchor style)
+        q_anchor.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        soil_font = copy(q_anchor.font)
+        soil_font.size = 7  # normalise across all templates
+        soil_font.color = font_color
+        q_anchor.font = soil_font
 
     def _clear_cell_children(self, cell):
         for child in list(cell):
@@ -1039,6 +1141,22 @@ class ExcelService:
     # USCS Atterberg helper — single-point Casagrande method (N=25)
     # ------------------------------------------------------------------
     @staticmethod
+    def _random_tara_ll() -> float:
+        """Random tara in [5.41, 6.69], 2 decimals, second decimal digit never 0."""
+        while True:
+            v = round(random.uniform(5.41, 6.69), 2)
+            if round(v * 100) % 10 != 0:   # rejects *.X0 (would display as 1 decimal)
+                return v
+
+    @staticmethod
+    def _random_nonzero_decimal(low: float, high: float) -> float:
+        """Random float in [low, high], 2 decimals, second decimal digit never 0."""
+        while True:
+            v = round(random.uniform(low, high), 2)
+            if round(v * 100) % 10 != 0:   # rejects *.X0 (would display as 1 decimal)
+                return v
+
+    @staticmethod
     def _atterberg_for_clasificacion(clasificacion: str) -> Optional[tuple]:
         """Return (ll, lp) int values that produce the given USCS classification.
 
@@ -1089,38 +1207,70 @@ class ExcelService:
 
         return None
 
-    def _apply_atterberg_to_sheet(self, target_sheet, ll: int, lp: int) -> None:
-        """Write LL and LP input cells using the single-point Casagrande method.
+    def _apply_atterberg_to_sheet(self, target_sheet, ll: float, lp: float) -> int:
+        """Write LL and LP input cells for a 3-point Casagrande test with realistic weights."""
+        n_k = random.choice([14, 15, 16])
+        n_l = random.choice([24, 25, 26])
+        n_m = random.choice([34, 35, 36])
+        self._set_cell_value(target_sheet, 'K14', n_k)
+        self._set_cell_value(target_sheet, 'L14', n_l)
+        self._set_cell_value(target_sheet, 'M14', n_m)
 
-        Uses normalized weights (dry+tara=100, tara=0) so:
-          K18 = (K15-K16)*100/(K16-K17) = (100+ll-100)*100/(100-0) = ll
-          Q27 = ((25/25)^0.121) * K18 = ll   (single-point formula, N=25)
-          K25 = (K22-K23)*100/(K23-K24) = lp
-          Q28 = AVERAGE(K25:L25) = lp
+        # LL weights — 3 Casagrande points.
+        # moisture_N = LL × (25/N)^0.121 so every point lies on the exact
+        # Casagrande flow curve and Excel's formula reproduces LL correctly.
+        # K16 (dry+tara) ≤ 25, K15 (wet+tara) < 70
+        for n, (wet_ref, dry_ref, tara_ref) in [
+            (n_k, ('K15', 'K16', 'K17')),
+            (n_l, ('L15', 'L16', 'L17')),
+            (n_m, ('M15', 'M16', 'M17')),
+        ]:
+            moisture = ll * (25 / n) ** 0.121
+            tara = self._random_tara_ll()
+            dry_t = self._random_nonzero_decimal(tara + 9.0, min(24.9, tara + 18.0))
+            wet_t = round(dry_t + (dry_t - tara) * moisture / 100, 2)
+            self._set_cell_value(target_sheet, tara_ref, tara)
+            self._set_cell_value(target_sheet, dry_ref, dry_t)
+            self._set_cell_value(target_sheet, wet_ref, wet_t)
+
+        # LP weights — 3 replicates; K23 (dry+tara) ≤ 25, K22 (wet+tara) < 70
+        for wet_r, dry_r, tara_r in [
+            ('K22', 'K23', 'K24'),
+            ('L22', 'L23', 'L24'),
+            ('M22', 'M23', 'M24'),
+        ]:
+            tara = self._random_tara_ll()
+            dry_t = self._random_nonzero_decimal(tara + 5.0, min(24.9, tara + 14.0))
+            wet_t = round(dry_t + (dry_t - tara) * lp / 100, 2)
+            self._set_cell_value(target_sheet, tara_r, tara)
+            self._set_cell_value(target_sheet, dry_r, dry_t)
+            self._set_cell_value(target_sheet, wet_r, wet_t)
+
+        return n_k
+
+    # G25 base values read data_only from each lab template.
+    # Each template has a different Q6 (initial sample weight), which drives
+    # E10 → F26 → G26 → X23.  These constants let us compute E26 dynamically
+    # so that G26 ≈ target regardless of which template is being filled.
+    _SM_G25 = {'4': 85.1635, '5': 82.9811, '6': 80.5239, '7': 80.5239}
+
+    def _set_sm_gradation(self, target_sheet, template_id: str = '4') -> None:
+        """Adjust E26 so X23 (% passing #200) lands in the SM range (12 < X23 < 50).
+
+        Chain: Q6 (initial weight) → E10=Q6 → F26=(100/E10)*E26 → G26=G25-F26
+               → X23=ROUND(G26,0).
+        Each template has its own Q6 (92.34 / 89.9 / 87.8), so E26 must be
+        computed from the actual Q6 and the known G25 baseline to hit a target G26.
         """
-        # Casagrande test — single point at 25 blows
-        self._set_cell_value(target_sheet, 'K14', 25)
-        self._set_cell_value(target_sheet, 'L14', None)   # blank → activates single-point path
-        self._set_cell_value(target_sheet, 'M14', None)
-        self._set_cell_value(target_sheet, 'K17', 0)      # tara = 0
-        self._set_cell_value(target_sheet, 'K16', 100)    # peso seco + tara
-        self._set_cell_value(target_sheet, 'K15', 100 + ll)  # peso húmedo + tara
-
-        # LP test — two replicates
-        for wet, dry, tara in [('K22', 'K23', 'K24'), ('L22', 'L23', 'L24')]:
-            self._set_cell_value(target_sheet, tara, 0)
-            self._set_cell_value(target_sheet, dry,  100)
-            self._set_cell_value(target_sheet, wet,  100 + lp)
-
-    def _set_sm_gradation(self, target_sheet) -> None:
-        """Adjust granulometry so X23 (% passing #200) falls between 12 and 50.
-
-        X23 = ROUND(G26, 0) where G26 = G25 - F26 = G25 - (100/E10)*E26.
-        Template defaults: E10=92.34, G25≈85.16.
-        Setting E26≈51 → F26≈55.2% → G26≈29.9 → X23=30 (12 < 30 < 50 ✓).
-        This satisfies the SM condition: AND(X23<50, X23>12, X18>50, IP<4).
-        """
-        self._set_cell_value(target_sheet, 'E26', 51.0)
+        try:
+            q6 = float(target_sheet['Q6'].value or 92.34)
+        except (TypeError, ValueError):
+            q6 = 92.34
+        g25 = self._SM_G25.get(str(template_id), 85.1635)
+        # Random target G26 in [22, 42] → X23 in [22, 42], well inside (12, 50)
+        target_g26 = random.uniform(22.0, 42.0)
+        e26 = round((g25 - target_g26) * q6 / 100.0, 2)
+        self._set_cell_value(target_sheet, 'E26', e26)
 
     def generate_excel(
         self,
@@ -1131,6 +1281,7 @@ class ExcelService:
         parametros: Optional[List[dict]] = None,
         photo_paths: Optional[List[Path]] = None,
         clasificacion_suelo: Optional[str] = None,
+        valores_laboratorio: Optional[dict] = None,
     ) -> Path:
         work_file = self._copy_template(template_id, project_id)
 
@@ -1235,26 +1386,122 @@ class ExcelService:
                 if layer_type_text:
                     self._set_cell_value(target_sheet, 'E6', layer_type_text)
 
+                # M4 = max(1, int(profundidad_z)) for the layer assigned to THIS lab.
+                # Mapping: Lab4→capa1, Lab5→capa2, Lab6→capa3, Lab7→capa4.
+                # 0.45 → int=0 → max(1,0)=1 | 1.45→1 | 2.45→2 | 3.45→3 ...
+                # If the lab's capa doesn't exist, fall back to the last available capa.
+                _m4_source = selected_layer if selected_layer is not None else (perforaciones[-1] if perforaciones else None)
+                _m4_value = None
+                if _m4_source is not None:
+                    try:
+                        _m4_value = max(1, int(float(_m4_source.get('profundidad_z', 0))))
+                    except (ValueError, TypeError):
+                        pass
+                if not _m4_value:
+                    _m4_value = 6 if pisos_int <= 3 else (15 if pisos_int <= 10 else 25)
+                self._set_cell_value(target_sheet, 'M4', _m4_value)
+                self._set_cell_value(target_sheet, 'Q5', _m4_value)
+
                 _atterberg = self._atterberg_for_clasificacion(clasificacion_suelo or '')
                 _k14_used = None
-                if _atterberg:
-                    self._apply_atterberg_to_sheet(target_sheet, _atterberg[0], _atterberg[1])
-                    # SM/C also needs a coarser gradation so X23 (% passing #200) < 50
+                _has_cls = bool((clasificacion_suelo or '').strip())
+
+                # Manual lab values provided by the user via the frontend form
+                _vl = valores_laboratorio or {}
+                _manual_ll = _vl.get('limite_liquido')   # float | None
+                _manual_lp = _vl.get('limite_plastico')  # float | None
+                _manual_humedad = _vl.get('humedad')     # float | None
+
+                # --- Casagrande data generation ---
+                # Priority: classification > manual values > auto-random.
+                # F30/F31 are formula cells (=ROUND(Q27,0) / =ROUND(Q28,0)) that
+                # compute LL/LP from the Casagrande inputs automatically.
+                # When a classification IS selected we must NOT overwrite F30/F31,
+                # because the formula already produces the correct LL/LP for that
+                # classification.  Writing a conflicting value (e.g. LL=45.51 for
+                # MH which needs LL>50) would make the USCS formula give ML instead.
+                # Manual LL/LP are only written to F30/F31 when there is NO
+                # classification, so the user's exact decimal is used as-is.
+                if _has_cls and _atterberg:
+                    # Classification wins — generate Casagrande data that satisfies it.
+                    _k14_used = self._apply_atterberg_to_sheet(target_sheet, _atterberg[0], _atterberg[1])
                     if (clasificacion_suelo or '').strip().upper() in ('SM', 'C'):
-                        self._set_sm_gradation(target_sheet)
+                        self._set_sm_gradation(target_sheet, template_id)
+                elif _manual_ll is not None or _manual_lp is not None:
+                    # No classification — manual values drive Casagrande generation.
+                    _ll = float(_manual_ll) if _manual_ll is not None else float(random.randint(35, 45))
+                    _lp = float(_manual_lp) if _manual_lp is not None else float(random.randint(15, 25))
+                    _k14_used = self._apply_atterberg_to_sheet(target_sheet, _ll, _lp)
                 else:
                     # Default: random Casagrande blow counts (3-point test)
                     _k14_used = random.choice([14, 15, 16])
+                    _l14 = random.choice([24, 25, 26])
+                    _m14 = random.choice([34, 35, 36])
                     self._set_cell_value(target_sheet, 'K14', _k14_used)
-                    self._set_cell_value(target_sheet, 'L14', random.choice([24, 25, 26]))
-                    self._set_cell_value(target_sheet, 'M14', random.choice([34, 35, 36]))
+                    self._set_cell_value(target_sheet, 'L14', _l14)
+                    self._set_cell_value(target_sheet, 'M14', _m14)
+                    _ll_est = random.randint(35, 45)
+                    for _n, (_wet_ref, _dry_ref, _tara_ref) in [
+                        (_k14_used, ('K15', 'K16', 'K17')),
+                        (_l14,      ('L15', 'L16', 'L17')),
+                        (_m14,      ('M15', 'M16', 'M17')),
+                    ]:
+                        _moist = _ll_est * (25 / _n) ** 0.121
+                        _tara = self._random_tara_ll()
+                        _dry_t = self._random_nonzero_decimal(_tara + 9.0, min(24.9, _tara + 18.0))
+                        _wet_t = round(_dry_t + (_dry_t - _tara) * _moist / 100, 2)
+                        self._set_cell_value(target_sheet, _tara_ref, _tara)
+                        self._set_cell_value(target_sheet, _dry_ref, _dry_t)
+                        self._set_cell_value(target_sheet, _wet_ref, _wet_t)
+                    _lp_est = random.randint(15, 25)
+                    for _wet_r, _dry_r, _tara_r in [
+                        ('K22', 'K23', 'K24'),
+                        ('L22', 'L23', 'L24'),
+                        ('M22', 'M23', 'M24'),
+                    ]:
+                        _tara = self._random_tara_ll()
+                        _dry_t = self._random_nonzero_decimal(_tara + 5.0, min(24.9, _tara + 14.0))
+                        _wet_t = round(_dry_t + (_dry_t - _tara) * _lp_est / 100, 2)
+                        self._set_cell_value(target_sheet, _tara_r, _tara)
+                        self._set_cell_value(target_sheet, _dry_r, _dry_t)
+                        self._set_cell_value(target_sheet, _wet_r, _wet_t)
+
+                # --- Summary cell overrides ---
+                # F30/F31 only when there is NO classification (classification formula
+                # handles them automatically via =ROUND(Q27,0) / =ROUND(Q28,0)).
+                # M25 (humidity) is independent of classification, always applied.
+                _f30_val = _manual_ll if not _has_cls else None
+                _f31_val = _manual_lp if not _has_cls else None
+                for _cell_ref, _val in [
+                    ('F30', _f30_val),
+                    ('F31', _f31_val),
+                    ('M25', _manual_humedad),
+                ]:
+                    if _val is not None:
+                        self._set_cell_value(target_sheet, _cell_ref, float(_val))
+                        _resolved = _cell_ref
+                        if target_sheet[_cell_ref].__class__.__name__ == 'MergedCell':
+                            _col_l, _row_n = coordinate_from_string(_cell_ref)
+                            _col_n = column_index_from_string(_col_l)
+                            for _mr in target_sheet.merged_cells.ranges:
+                                if _mr.min_row <= _row_n <= _mr.max_row and _mr.min_col <= _col_n <= _mr.max_col:
+                                    _resolved = _mr.start_cell.coordinate
+                                    break
+                        target_sheet[_resolved].number_format = '0.##'
 
                 # Save lab state from the first lab template so INCONFINADO and
-                # ASENTAMIENTOS can use consistent values (n_golpes, lp).
+                # ASENTAMIENTOS can use consistent values (n_golpes, lp, humedad).
                 if str(template_id) == '4':
-                    _lab_lp = _atterberg[1] if _atterberg else 22
+                    # When classification is set, use its LP; otherwise use manual or default.
+                    _lab_lp = (
+                        float(_atterberg[1]) if _has_cls and _atterberg
+                        else (float(_manual_lp) if _manual_lp is not None else 22)
+                    )
                     _lab_n = _k14_used if _k14_used is not None else 14
-                    self._save_lab_state({'n_golpes': _lab_n, 'lp': _lab_lp})
+                    _lab_state: dict = {'n_golpes': _lab_n, 'lp': float(_lab_lp)}
+                    if _manual_humedad is not None:
+                        _lab_state['humedad'] = float(_manual_humedad)
+                    self._save_lab_state(_lab_state)
 
                 wb_tmp.save(work_file)
                 wb_tmp.close()
@@ -1480,6 +1727,10 @@ class ExcelService:
                     continue
                 if field_name == "descripcion_suelo":
                     continue
+                if field_name == "gamma":
+                    # gamma is written per layer segment in the segment loop below,
+                    # not one value per perforacion row.
+                    continue
 
                 value = row_data.get(field_name, "")
                 if field_name == "n_campo_spt" and 10 <= row_number <= 16 and isinstance(value, int):
@@ -1487,19 +1738,6 @@ class ExcelService:
                     reduce_next = not reduce_next
 
                 primary_updates[f"{column_letter}{row_number}"] = value
-
-        # Gamma column B starts at 15 and increments by layer across the visible rows.
-        # This keeps the gamma values tied to the discovered layers.
-        layer_count = len(perforaciones or [])
-        if layer_count > 0:
-            for index in range(layer_count):
-                primary_updates[f"B{start_row + index}"] = 15 + index
-            last_gamma = 15 + max(0, layer_count - 1)
-            for row_number in range(start_row + layer_count, f_end + 1):
-                primary_updates[f"B{row_number}"] = last_gamma
-        else:
-            for row_number in range(start_row, f_end + 1):
-                primary_updates[f"B{row_number}"] = None
 
         # If the soil description column is empty, mirror the same-row L cell.
         for row_number in range(start_row, f_end + 1):
@@ -1517,6 +1755,9 @@ class ExcelService:
             for i, v in enumerate(spt_final_values):
                 primary_updates[f"F{spt_start + i}"] = v
             self._save_spt_state(str(template_id), spt_final_values)
+            # Column A (Z(m)): auto-generate depth sequence 0.45, 1.45, 2.45, …
+            for _ai in range(f_end - start_row + 1):
+                primary_updates[f"A{start_row + _ai}"] = round(0.45 + _ai * 1.0, 2)
         if primary_updates:
             primary_sheet = sheet_targets.get(self._normalize("P3"))
             if primary_sheet:
@@ -1579,7 +1820,12 @@ class ExcelService:
                         tipo = self._clean_soil_text(layer.get('tipo_suelo_principal'), layer.get('color_predominante'))
                         return tipo
 
-                    q_segments = self._build_soil_segments(sheet_obj, list(perforaciones or []), start_row, f_end)
+                    if str(template_id) in ("1", "2", "3"):
+                        q_segments = self._build_depth_soil_segments_exact(
+                            list(perforaciones or []), start_row, f_end
+                        )
+                    else:
+                        q_segments = self._build_soil_segments(sheet_obj, list(perforaciones or []), start_row, f_end)
 
                     # Coalesce adjacent segments that render the same soil text so they
                     # appear as a single merged block (user requested centrar y combinarlas)
@@ -1601,48 +1847,87 @@ class ExcelService:
                     # normalize back to tuples
                     q_segments = [(s[0], s[1], s[2]) for s in coalesced]
 
+                    # Unmerge Q and B columns in the data range before reapplying per-segment merges.
+                    # Column I must never be touched (Marcuson K factor formulas).
+                    # Note: startswith check removed for B — catches multi-col merges like A10:B12
+                    # where the anchor is column A, not B.
                     for merged_range in list(sheet_obj.merged_cells.ranges):
-                        # remove existing merges that overlap the soil column(s) - Column Q only
-                        # NOTE: Column I has critical Marcuson K factor formulas - DO NOT modify
-                        if (merged_range.min_col <= 17 <= merged_range.max_col):
-                            if merged_range.max_row >= start_row and merged_range.min_row <= f_end:
-                                start_cell = merged_range.start_cell.coordinate
-                                if start_cell.startswith('Q'):
-                                    try:
-                                        sheet_obj.unmerge_cells(str(merged_range))
-                                    except Exception:
-                                        pass
-
-                    for row_start, row_end, layer in q_segments:
-                        q_range = f"Q{row_start}" if row_start == row_end else f"Q{row_start}:Q{row_end}"
-                        if row_start != row_end:
+                        if merged_range.max_row < start_row or merged_range.min_row > f_end:
+                            continue
+                        if merged_range.min_col <= 17 <= merged_range.max_col:
                             try:
-                                sheet_obj.merge_cells(q_range)
+                                sheet_obj.unmerge_cells(str(merged_range))
+                            except Exception:
+                                pass
+                        elif merged_range.min_col <= 2 <= merged_range.max_col:
+                            try:
+                                sheet_obj.unmerge_cells(str(merged_range))
                             except Exception:
                                 pass
 
-                        q_anchor = sheet_obj[f'Q{row_start}']
-                        text_value = build_soil_text(layer)
-                        q_anchor.value = text_value
-                        fill, font_color = self._soil_style_from_color(layer.get('color_predominante'))
-                        q_anchor.fill = fill
-                        q_anchor.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                        soil_font = copy(q_anchor.font)
-                        soil_font.color = font_color
-                        q_anchor.font = soil_font
-                        
+                    # Clear column B values in the full data range AFTER unmerge so all cells
+                    # (including formerly-merged ones) are cleared before writing new values.
+                    if str(template_id) in ("1", "2", "3"):
+                        for _br in range(start_row, f_end + 1):
+                            try:
+                                sheet_obj.cell(row=_br, column=2).value = None
+                            except Exception:
+                                pass
+
+                    # Clear Q column values and (for correlation templates) fills so
+                    # rows beyond the last layer are completely empty.
+                    _no_fill = PatternFill(fill_type=None)
+                    for _qr in range(start_row, f_end + 1):
+                        try:
+                            _qcell = sheet_obj.cell(row=_qr, column=17)
+                            _qcell.value = None
+                            if str(template_id) in ("1", "2", "3"):
+                                _qcell.fill = _no_fill
+                        except Exception:
+                            pass
+
+                    for seg_idx, (row_start, row_end, layer) in enumerate(q_segments):
+                        self._apply_q_segment_format(
+                            sheet_obj, row_start, row_end, layer, build_soil_text(layer)
+                        )
                         # NOTE: Column I contains critical Marcuson K factor formulas =IF(H#<1,(1.41),(0.92))
                         # NEVER modify Column I - it must remain unchanged with original formulas
 
-                        if str(template_id) == "1":
-                            gamma_value = layer.get('gamma')
-                            for row_number in range(row_start, row_end + 1):
-                                b_cell = sheet_obj[f'B{row_number}']
-                                b_cell.value = gamma_value
-                                b_cell.fill = PatternFill(fill_type=None)
-                                b_cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
-                        
-                        # Column I is protected - NEVER modify - contains Marcuson K factor formulas
+                    # ── Column B: gamma values derived from Q's actual merged structure ──
+                    # After the Q loop creates the real merges, each merged block in Q
+                    # represents one geotechnical layer.  Layer 1 → 15, layer 2 → 16, …
+                    # The gamma is repeated in every individual B cell of that row span.
+                    if str(template_id) in ("1", "2", "3"):
+                        _b_blocks: list = []
+                        _b_covered: set = set()
+                        for _mr in list(sheet_obj.merged_cells.ranges):
+                            if _mr.min_col <= 17 <= _mr.max_col:
+                                _rs = max(_mr.min_row, start_row)
+                                _re = min(_mr.max_row, f_end)
+                                if _rs <= _re:
+                                    _b_blocks.append((_rs, _re))
+                                    _b_covered.update(range(_rs, _re + 1))
+                        # Q rows not part of any merge → own single-row layer
+                        for _r in range(start_row, f_end + 1):
+                            if _r not in _b_covered:
+                                _b_blocks.append((_r, _r))
+                        _b_blocks.sort()
+                        _white_fill = PatternFill(fill_type="solid", fgColor="FFFFFF")
+                        _thin = Side(style="thin")
+                        _b_border = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
+                        for _idx, (_rs, _re) in enumerate(_b_blocks):
+                            _gamma = 15 + _idx
+                            for _row in range(_rs, _re + 1):
+                                try:
+                                    _cell = sheet_obj.cell(row=_row, column=2)
+                                    _cell.value = _gamma
+                                    _cell.fill = _white_fill
+                                    _cell.border = _b_border
+                                    _cell.alignment = Alignment(
+                                        horizontal='center', vertical='center'
+                                    )
+                                except Exception:
+                                    pass
 
                 # finally save workbook once after all data updates
                 wb_tmp.save(work_file)

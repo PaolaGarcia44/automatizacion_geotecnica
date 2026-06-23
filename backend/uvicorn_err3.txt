@@ -1,0 +1,13 @@
+INFO:     Started server process [29332]
+INFO:     Waiting for application startup.
+2026-06-22 17:52:41,964 - main - INFO - ============================================================
+2026-06-22 17:52:41,965 - main - INFO - AutoGeo Backend iniciado
+2026-06-22 17:52:41,965 - main - INFO - Ambiente: DEBUG
+2026-06-22 17:52:41,965 - main - INFO - Directorio de plantillas: C:\Users\Paola\OneDrive - Tecnologico de Antioquia Institucion Universitaria\Escritorio\Automatización geotecnica\automatizacion_geotecnica\backend\templates\excel
+2026-06-22 17:52:41,965 - main - INFO - Directorio de salida: C:\Users\Paola\OneDrive - Tecnologico de Antioquia Institucion Universitaria\Escritorio\Automatización geotecnica\automatizacion_geotecnica\backend\generated
+2026-06-22 17:52:41,965 - main - INFO - ============================================================
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('0.0.0.0', 8000): [winerror 10048] solo se permite un uso de cada dirección de socket (protocolo/dirección de red/puerto)
+INFO:     Waiting for application shutdown.
+2026-06-22 17:52:41,968 - main - INFO - AutoGeo Backend cerrado
+INFO:     Application shutdown complete.

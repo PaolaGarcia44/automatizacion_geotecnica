@@ -1,0 +1,239 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="834" viewBox="0 0 760 834">
+<defs>
+  <filter id="ftex_gravel" x="-5%" y="-5%" width="110%" height="110%" primitiveUnits="userSpaceOnUse" color-interpolation-filters="linearRGB"><feTurbulence type="turbulence" baseFrequency="0.018 0.018" numOctaves="3" seed="23" result="n"/><feColorMatrix type="luminanceToAlpha" in="n" result="m"/><feFlood flood-color="#000" result="d"/><feComposite in="d" in2="m" operator="in"/></filter>
+  <filter id="ftex_rock" x="-5%" y="-5%" width="110%" height="110%" primitiveUnits="userSpaceOnUse" color-interpolation-filters="linearRGB"><feTurbulence type="fractalNoise" baseFrequency="0.011 0.011" numOctaves="5" seed="29" result="n"/><feColorMatrix type="luminanceToAlpha" in="n" result="m"/><feFlood flood-color="#000" result="d"/><feComposite in="d" in2="m" operator="in"/></filter>
+  <filter id="ftex_organic" x="-5%" y="-5%" width="110%" height="110%" primitiveUnits="userSpaceOnUse" color-interpolation-filters="linearRGB"><feTurbulence type="fractalNoise" baseFrequency="0.007 0.026" numOctaves="4" seed="37" result="n"/><feColorMatrix type="luminanceToAlpha" in="n" result="m"/><feFlood flood-color="#000" result="d"/><feComposite in="d" in2="m" operator="in"/></filter>
+  <filter id="ftex_clay" x="-5%" y="-5%" width="110%" height="110%" primitiveUnits="userSpaceOnUse" color-interpolation-filters="linearRGB"><feTurbulence type="fractalNoise" baseFrequency="0.0012 0.055" numOctaves="3" seed="7" result="n"/><feColorMatrix type="luminanceToAlpha" in="n" result="m"/><feFlood flood-color="#000" result="d"/><feComposite in="d" in2="m" operator="in"/></filter>
+  <filter id="ftex_fine_sand" x="-5%" y="-5%" width="110%" height="110%" primitiveUnits="userSpaceOnUse" color-interpolation-filters="linearRGB"><feTurbulence type="turbulence" baseFrequency="0.075 0.075" numOctaves="2" seed="13" result="n"/><feColorMatrix type="luminanceToAlpha" in="n" result="m"/><feFlood flood-color="#000" result="d"/><feComposite in="d" in2="m" operator="in"/></filter>
+  <pattern id="pat_gravel" patternUnits="userSpaceOnUse" width="32" height="22"><ellipse cx="9" cy="7" rx="7" ry="4.5" fill="none" stroke="rgba(0,0,0,0.40)" stroke-width="1.0"/><ellipse cx="24" cy="15" rx="6" ry="4" fill="none" stroke="rgba(0,0,0,0.38)" stroke-width="1.0"/><ellipse cx="6" cy="19" rx="4.5" ry="2.8" fill="none" stroke="rgba(0,0,0,0.36)" stroke-width="0.9"/></pattern>
+  <pattern id="pat_rock" patternUnits="userSpaceOnUse" width="18" height="18"><line x1="0" y1="0" x2="18" y2="18" stroke="rgba(0,0,0,0.35)" stroke-width="1.1"/><line x1="18" y1="0" x2="0" y2="18" stroke="rgba(0,0,0,0.35)" stroke-width="1.1"/></pattern>
+  <pattern id="pat_organic" patternUnits="userSpaceOnUse" width="30" height="10"><path d="M0,5 Q7.5,1.5 15,5 Q22.5,8.5 30,5" fill="none" stroke="rgba(0,0,0,0.30)" stroke-width="1.0"/></pattern>
+  <pattern id="pat_clay" patternUnits="userSpaceOnUse" width="40" height="7"><line x1="0" y1="3.5" x2="40" y2="3.5" stroke="rgba(0,0,0,0.22)" stroke-width="0.9"/></pattern>
+  <pattern id="pat_fine_sand" patternUnits="userSpaceOnUse" width="6" height="6"><circle cx="3" cy="3" r="0.75" fill="rgba(0,0,0,0.30)"/></pattern>
+  <clipPath id="cpl0"><polygon points="25.0,94.0 60.8,94.0 96.7,94.0 132.5,94.0 168.3,94.0 204.2,94.0 240.0,94.0 275.8,94.0 311.7,94.0 347.5,94.0 383.3,94.0 419.2,94.0 455.0,94.0 455.0,134.0 419.2,129.4 383.3,131.4 347.5,137.6 311.7,138.0 275.8,131.9 240.0,129.2 204.2,134.3 168.3,138.8 132.5,135.6 96.7,129.7 60.8,130.8 25.0,134.0"/></clipPath>
+  <clipPath id="cpl1"><polygon points="25.0,134.0 60.8,130.8 96.7,129.7 132.5,135.6 168.3,138.8 204.2,134.3 240.0,129.2 275.8,131.9 311.7,138.0 347.5,137.6 383.3,131.4 419.2,129.4 455.0,134.0 455.0,214.0 419.2,216.7 383.3,213.7 347.5,211.2 311.7,213.2 275.8,216.5 240.0,215.7 204.2,212.1 168.3,211.6 132.5,214.9 96.7,216.8 60.8,214.1 25.0,214.0"/></clipPath>
+  <clipPath id="cpl2"><polygon points="25.0,214.0 60.8,214.1 96.7,216.8 132.5,214.9 168.3,211.6 204.2,212.1 240.0,215.7 275.8,216.5 311.7,213.2 347.5,211.2 383.3,213.7 419.2,216.7 455.0,214.0 455.0,374.0 419.2,373.2 383.3,375.0 347.5,375.2 311.7,373.5 275.8,372.6 240.0,374.0 204.2,375.4 168.3,374.5 132.5,372.8 96.7,373.1 60.8,374.8 25.0,374.0"/></clipPath>
+  <clipPath id="cpl3"><polygon points="25.0,374.0 60.8,374.8 96.7,373.1 132.5,372.8 168.3,374.5 204.2,375.4 240.0,374.0 275.8,372.6 311.7,373.5 347.5,375.2 383.3,375.0 419.2,373.2 455.0,374.0 455.0,544.0 419.2,543.7 383.3,540.2 347.5,542.8 311.7,547.4 275.8,546.5 240.0,541.5 204.2,540.6 168.3,545.2 132.5,547.8 96.7,544.3 60.8,540.3 25.0,544.0"/></clipPath>
+  <clipPath id="cpl4"><polygon points="25.0,544.0 60.8,540.3 96.7,544.3 132.5,547.8 168.3,545.2 204.2,540.6 240.0,541.5 275.8,546.5 311.7,547.4 347.5,542.8 383.3,540.2 419.2,543.7 455.0,544.0 455.0,694.0 419.2,694.0 383.3,694.0 347.5,694.0 311.7,694.0 275.8,694.0 240.0,694.0 204.2,694.0 168.3,694.0 132.5,694.0 96.7,694.0 60.8,694.0 25.0,694.0"/></clipPath>
+  <linearGradient id="gL0" x1="0" y1="94.0" x2="0" y2="134.0" gradientUnits="userSpaceOnUse"><stop offset="0%"   stop-color="#5B7F74"/><stop offset="30%"  stop-color="#29584A"/><stop offset="80%"  stop-color="#1B4D3E"/><stop offset="100%" stop-color="#153C30"/></linearGradient>
+  <linearGradient id="gR0" x1="0" y1="94.0" x2="0" y2="134.0" gradientUnits="userSpaceOnUse"><stop offset="0%"   stop-color="#113026"/><stop offset="100%" stop-color="#0C221B"/></linearGradient>
+  <linearGradient id="gL1" x1="0" y1="134.0" x2="0" y2="214.0" gradientUnits="userSpaceOnUse"><stop offset="0%"   stop-color="#B7947D"/><stop offset="30%"  stop-color="#A17455"/><stop offset="80%"  stop-color="#9B6B4A"/><stop offset="100%" stop-color="#79533A"/></linearGradient>
+  <linearGradient id="gR1" x1="0" y1="134.0" x2="0" y2="214.0" gradientUnits="userSpaceOnUse"><stop offset="0%"   stop-color="#60422E"/><stop offset="100%" stop-color="#442F21"/></linearGradient>
+  <linearGradient id="gL2" x1="0" y1="214.0" x2="0" y2="374.0" gradientUnits="userSpaceOnUse"><stop offset="0%"   stop-color="#B7AC47"/><stop offset="30%"  stop-color="#A1930F"/><stop offset="80%"  stop-color="#9B8C00"/><stop offset="100%" stop-color="#796D00"/></linearGradient>
+  <linearGradient id="gR2" x1="0" y1="214.0" x2="0" y2="374.0" gradientUnits="userSpaceOnUse"><stop offset="0%"   stop-color="#605700"/><stop offset="100%" stop-color="#443E00"/></linearGradient>
+  <linearGradient id="gL3" x1="0" y1="374.0" x2="0" y2="544.0" gradientUnits="userSpaceOnUse"><stop offset="0%"   stop-color="#E4E4E4"/><stop offset="30%"  stop-color="#DBDBDB"/><stop offset="80%"  stop-color="#D9D9D9"/><stop offset="100%" stop-color="#A9A9A9"/></linearGradient>
+  <linearGradient id="gR3" x1="0" y1="374.0" x2="0" y2="544.0" gradientUnits="userSpaceOnUse"><stop offset="0%"   stop-color="#878787"/><stop offset="100%" stop-color="#5F5F5F"/></linearGradient>
+  <linearGradient id="gL4" x1="0" y1="544.0" x2="0" y2="694.0" gradientUnits="userSpaceOnUse"><stop offset="0%"   stop-color="#818181"/><stop offset="30%"  stop-color="#5A5A5A"/><stop offset="80%"  stop-color="#505050"/><stop offset="100%" stop-color="#3E3E3E"/></linearGradient>
+  <linearGradient id="gR4" x1="0" y1="544.0" x2="0" y2="694.0" gradientUnits="userSpaceOnUse"><stop offset="0%"   stop-color="#323232"/><stop offset="100%" stop-color="#232323"/></linearGradient>
+  <linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0%"   stop-color="#98AFA8"/><stop offset="100%" stop-color="#6B8B82"/></linearGradient>
+  <linearGradient id="gSpec" x1="0" y1="0" x2="0" y2="1"><stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.32"/><stop offset="18%"  stop-color="#FFFFFF" stop-opacity="0.0"/></linearGradient>
+  <linearGradient id="gAO" x1="0" y1="0" x2="0" y2="1"><stop offset="0%"   stop-color="#000000" stop-opacity="0.0"/><stop offset="100%" stop-color="#000000" stop-opacity="0.30"/></linearGradient>
+  <linearGradient id="gBnd" x1="0" y1="0" x2="0" y2="1"><stop offset="0%"   stop-color="#000000" stop-opacity="0.22"/><stop offset="100%" stop-color="#000000" stop-opacity="0.0"/></linearGradient>
+  <filter id="gShd" x="-10%" y="-5%" width="125%" height="115%"><feGaussianBlur in="SourceAlpha" stdDeviation="6" result="b"/><feOffset dx="5" dy="7" result="o"/><feFlood flood-color="rgba(0,0,0,0.28)" result="c"/><feComposite in="c" in2="o" operator="in" result="s"/><feBlend in="SourceGraphic" in2="s" mode="normal"/></filter>
+  <filter id="gTS" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur in="SourceAlpha" stdDeviation="1.0" result="b"/><feOffset dx="1" dy="1" result="o"/><feFlood flood-color="rgba(0,0,0,0.55)" result="c"/><feComposite in="c" in2="o" operator="in" result="s"/><feBlend in="SourceGraphic" in2="s" mode="normal"/></filter>
+  <radialGradient id="sg3_0" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#D0CCC2"/><stop offset="100%" stop-color="#666258"/></radialGradient>
+  <radialGradient id="sg3_1" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#CEC9BF"/><stop offset="100%" stop-color="#706B61"/></radialGradient>
+  <radialGradient id="sg3_4" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#C9C3B9"/><stop offset="100%" stop-color="#7D786C"/></radialGradient>
+  <radialGradient id="sg3_5" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#C7C1B6"/><stop offset="100%" stop-color="#7B766A"/></radialGradient>
+  <radialGradient id="sg3_6" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#CFCAC1"/><stop offset="100%" stop-color="#827C70"/></radialGradient>
+  <radialGradient id="sg3_8" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#CDC8BE"/><stop offset="100%" stop-color="#706B61"/></radialGradient>
+  <radialGradient id="sg3_9" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#D1CDC4"/><stop offset="100%" stop-color="#666158"/></radialGradient>
+  <radialGradient id="sg3_11" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#C6C0B4"/><stop offset="100%" stop-color="#857F73"/></radialGradient>
+  <radialGradient id="sg3_12" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#C6C0B4"/><stop offset="100%" stop-color="#878175"/></radialGradient>
+  <radialGradient id="sg3_13" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#CAC5BA"/><stop offset="100%" stop-color="#716C62"/></radialGradient>
+  <radialGradient id="sg3_14" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#CBC5BB"/><stop offset="100%" stop-color="#787268"/></radialGradient>
+  <radialGradient id="sg3_15" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#C9C3B8"/><stop offset="100%" stop-color="#7C766B"/></radialGradient>
+  <radialGradient id="sg3_17" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#C4BEB2"/><stop offset="100%" stop-color="#646057"/></radialGradient>
+  <radialGradient id="sg3_20" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#CCC6BC"/><stop offset="100%" stop-color="#767066"/></radialGradient>
+  <radialGradient id="sg4_0" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#C7C2C2"/><stop offset="100%" stop-color="#6D6767"/></radialGradient>
+  <radialGradient id="sg4_1" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#C7C1C1"/><stop offset="100%" stop-color="#746E6E"/></radialGradient>
+  <radialGradient id="sg4_2" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#CAC5C5"/><stop offset="100%" stop-color="#656161"/></radialGradient>
+  <radialGradient id="sg4_4" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#BFB9B9"/><stop offset="100%" stop-color="#837C7C"/></radialGradient>
+  <radialGradient id="sg4_6" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#C6C1C1"/><stop offset="100%" stop-color="#837D7D"/></radialGradient>
+  <radialGradient id="sg4_7" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#C4BFBF"/><stop offset="100%" stop-color="#756F6F"/></radialGradient>
+  <radialGradient id="sg4_12" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#CAC5C5"/><stop offset="100%" stop-color="#666161"/></radialGradient>
+  <radialGradient id="sg4_21" cx="0.35" cy="0.30" r="0.65" gradientUnits="objectBoundingBox"><stop offset="0%" stop-color="#BFB9B9"/><stop offset="100%" stop-color="#7D7777"/></radialGradient>
+</defs>
+<rect width="760" height="834" fill="white"/>
+<rect x="0" y="0" width="760" height="42" fill="#1C3A5C"/>
+<text x="380" y="27" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13.5" font-weight="bold" letter-spacing="1.2" fill="#FFFFFF">PERFIL ESTRATIGRÁFICO DEL SUELO</text>
+<rect x="0" y="42" width="760" height="40" fill="#2D5E8C"/>
+<text x="14" y="56" font-family="Arial, Helvetica, sans-serif" font-size="8" font-weight="bold" fill="#FFFFFF">PROYECTO:</text>
+<text x="74" y="56" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#FFFFFF">PROYECTO PRUEBA GEOTECNICO ANTIOQUIA</text>
+<text x="380" y="56" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#FFFFFF"><tspan font-weight="bold">SONDEO: </tspan>P-2</text>
+<text x="746" y="56" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#FFFFFF"><tspan font-weight="bold">FECHA: </tspan>19/06/2026</text>
+<text x="14" y="70" font-family="Arial, Helvetica, sans-serif" font-size="6.5" fill="rgba(255,255,255,0.70)">Corte transversal tridimensional — Texturas generadas dinámicamente según tipo de suelo</text>
+<g filter="url(#gShd)">
+<polygon points="25,94.0 455,94.0 483,80.0 53,80.0" fill="url(#gTop)" stroke="rgba(0,0,0,0.50)" stroke-width="0.8"/>
+<rect x="25" y="94.0" width="430" height="40.0" fill="url(#gL0)" clip-path="url(#cpl0)"/>
+<rect x="25" y="94.0" width="430" height="40.0" filter="url(#ftex_organic)" clip-path="url(#cpl0)" opacity="0.40"/>
+<rect x="25" y="94.0" width="430" height="40.0" fill="url(#pat_organic)" clip-path="url(#cpl0)" opacity="0.38"/>
+<path d="M446.7,107.0 C464.6,121.3 435.0,132.0 453.1,132.0" fill="none" stroke="rgba(74,44,20,0.35)" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M366.0,105.3 C381.9,128.5 376.3,132.0 370.7,132.0" fill="none" stroke="rgba(74,44,20,0.35)" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M119.4,98.3 C112.2,115.0 113.6,126.0 116.4,126.0" fill="none" stroke="rgba(74,44,20,0.35)" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M136.7,97.9 C125.7,114.3 130.2,126.0 133.3,126.0" fill="none" stroke="rgba(74,44,20,0.35)" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M442.8,106.9 C430.8,121.0 430.6,132.0 449.2,132.0" fill="none" stroke="rgba(74,44,20,0.35)" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M362.2,105.2 C366.7,125.5 365.4,132.0 366.7,132.0" fill="none" stroke="rgba(74,44,20,0.35)" stroke-width="1.2" stroke-linecap="round"/>
+<rect x="25" y="94.0" width="430" height="8.8" fill="url(#gSpec)" clip-path="url(#cpl0)"/>
+<rect x="25" y="126.0" width="430" height="8.0" fill="url(#gAO)" clip-path="url(#cpl0)"/>
+<polygon points="25.0,94.0 60.8,94.0 96.7,94.0 132.5,94.0 168.3,94.0 204.2,94.0 240.0,94.0 275.8,94.0 311.7,94.0 347.5,94.0 383.3,94.0 419.2,94.0 455.0,94.0 455.0,134.0 419.2,129.4 383.3,131.4 347.5,137.6 311.7,138.0 275.8,131.9 240.0,129.2 204.2,134.3 168.3,138.8 132.5,135.6 96.7,129.7 60.8,130.8 25.0,134.0" fill="none" stroke="#0C231C" stroke-width="0.6"/>
+<rect x="25" y="134.0" width="430" height="6" fill="url(#gBnd)" clip-path="url(#cpl1)"/>
+<polygon points="455,94.0 483,80.0 483,120.0 455,134.0" fill="url(#gR0)" stroke="#0C231C" stroke-width="0.6" stroke-linejoin="round"/>
+<text x="240.0" y="117.0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="bold" font-style="italic" fill="#FFFFFF" filter="url(#gTS)">Material orgánico</text>
+<rect x="25" y="134.0" width="430" height="80.0" fill="url(#gL1)" clip-path="url(#cpl1)"/>
+<rect x="25" y="134.0" width="430" height="80.0" filter="url(#ftex_clay)" clip-path="url(#cpl1)" opacity="0.32"/>
+<rect x="25" y="134.0" width="430" height="80.0" fill="url(#pat_clay)" clip-path="url(#cpl1)" opacity="0.38"/>
+<path d="M408.9,157.6 C423.2,204.4 420.0,212.0 414.0,212.0" fill="none" stroke="rgba(80,60,30,0.22)" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M132.9,141.5 C127.0,176.9 129.6,197.5 129.4,197.5" fill="none" stroke="rgba(80,60,30,0.22)" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M236.3,150.1 C240.1,189.0 237.4,210.0 237.5,210.0" fill="none" stroke="rgba(80,60,30,0.22)" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M173.8,144.2 C166.3,187.8 180.9,201.7 171.8,201.7" fill="none" stroke="rgba(80,60,30,0.22)" stroke-width="1.2" stroke-linecap="round"/>
+<rect x="25" y="134.0" width="430" height="14.0" fill="url(#gSpec)" clip-path="url(#cpl1)"/>
+<rect x="25" y="198.0" width="430" height="16.0" fill="url(#gAO)" clip-path="url(#cpl1)"/>
+<polygon points="25.0,134.0 60.8,130.8 96.7,129.7 132.5,135.6 168.3,138.8 204.2,134.3 240.0,129.2 275.8,131.9 311.7,138.0 347.5,137.6 383.3,131.4 419.2,129.4 455.0,134.0 455.0,214.0 419.2,216.7 383.3,213.7 347.5,211.2 311.7,213.2 275.8,216.5 240.0,215.7 204.2,212.1 168.3,211.6 132.5,214.9 96.7,216.8 60.8,214.1 25.0,214.0" fill="none" stroke="#463021" stroke-width="0.6"/>
+<rect x="25" y="214.0" width="430" height="6" fill="url(#gBnd)" clip-path="url(#cpl2)"/>
+<polygon points="455,134.0 483,120.0 483,200.0 455,214.0" fill="url(#gR1)" stroke="#463021" stroke-width="0.6" stroke-linejoin="round"/>
+<text x="240.0" y="168.0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="bold" font-style="italic" fill="#FFFFFF" filter="url(#gTS)">Arcilla</text>
+<text x="240.0" y="183.0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#FFFFFF" opacity="0.88">0.40–1.20 m</text>
+<rect x="25" y="214.0" width="430" height="160.0" fill="url(#gL2)" clip-path="url(#cpl2)"/>
+<rect x="25" y="214.0" width="430" height="160.0" filter="url(#ftex_fine_sand)" clip-path="url(#cpl2)" opacity="0.35"/>
+<rect x="25" y="214.0" width="430" height="160.0" fill="url(#pat_fine_sand)" clip-path="url(#cpl2)" opacity="0.38"/>
+<rect x="25" y="214.0" width="430" height="14.0" fill="url(#gSpec)" clip-path="url(#cpl2)"/>
+<rect x="25" y="358.0" width="430" height="16.0" fill="url(#gAO)" clip-path="url(#cpl2)"/>
+<polygon points="25.0,214.0 60.8,214.1 96.7,216.8 132.5,214.9 168.3,211.6 204.2,212.1 240.0,215.7 275.8,216.5 311.7,213.2 347.5,211.2 383.3,213.7 419.2,216.7 455.0,214.0 455.0,374.0 419.2,373.2 383.3,375.0 347.5,375.2 311.7,373.5 275.8,372.6 240.0,374.0 204.2,375.4 168.3,374.5 132.5,372.8 96.7,373.1 60.8,374.8 25.0,374.0" fill="none" stroke="#463F00" stroke-width="0.6"/>
+<rect x="25" y="374.0" width="430" height="6" fill="url(#gBnd)" clip-path="url(#cpl3)"/>
+<polygon points="455,214.0 483,200.0 483,360.0 455,374.0" fill="url(#gR2)" stroke="#463F00" stroke-width="0.6" stroke-linejoin="round"/>
+<text x="240.0" y="288.0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="bold" font-style="italic" fill="#1A1A1A" filter="url(#gTS)">Arena fina</text>
+<text x="240.0" y="303.0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#1A1A1A" opacity="0.88">1.20–2.80 m</text>
+<rect x="25" y="374.0" width="430" height="170.0" fill="url(#gL3)" clip-path="url(#cpl3)"/>
+<rect x="25" y="374.0" width="430" height="170.0" filter="url(#ftex_gravel)" clip-path="url(#cpl3)" opacity="0.48"/>
+<rect x="25" y="374.0" width="430" height="170.0" fill="url(#pat_gravel)" clip-path="url(#cpl3)" opacity="0.38"/>
+<ellipse cx="340.7" cy="496.5" rx="14.7" ry="10.8" fill="url(#sg3_0)" stroke="#58544C" stroke-width="0.8" transform="rotate(15.2 340.7 496.5)"/>
+<ellipse cx="202.3" cy="418.9" rx="10.2" ry="6.0" fill="url(#sg3_1)" stroke="#58544C" stroke-width="0.8" transform="rotate(-3.2 202.3 418.9)"/>
+<ellipse cx="263.7" cy="469.8" rx="12.2" ry="8.1" fill="url(#sg3_4)" stroke="#58544C" stroke-width="0.8" transform="rotate(4.8 263.7 469.8)"/>
+<ellipse cx="49.4" cy="401.4" rx="5.6" ry="4.4" fill="url(#sg3_5)" stroke="#58544C" stroke-width="0.8" transform="rotate(-22.7 49.4 401.4)"/>
+<ellipse cx="86.2" cy="405.2" rx="14.6" ry="8.0" fill="url(#sg3_6)" stroke="#58544C" stroke-width="0.8" transform="rotate(15.2 86.2 405.2)"/>
+<ellipse cx="47.7" cy="389.3" rx="5.5" ry="2.6" fill="url(#sg3_8)" stroke="#58544C" stroke-width="0.8" transform="rotate(-22.9 47.7 389.3)"/>
+<ellipse cx="121.5" cy="525.9" rx="13.1" ry="8.7" fill="url(#sg3_9)" stroke="#58544C" stroke-width="0.8" transform="rotate(8.7 121.5 525.9)"/>
+<ellipse cx="174.8" cy="427.7" rx="9.9" ry="5.5" fill="url(#sg3_11)" stroke="#58544C" stroke-width="0.8" transform="rotate(-4.6 174.8 427.7)"/>
+<ellipse cx="385.0" cy="441.7" rx="16.1" ry="12.6" fill="url(#sg3_12)" stroke="#58544C" stroke-width="0.8" transform="rotate(21.3 385.0 441.7)"/>
+<ellipse cx="215.6" cy="461.9" rx="10.6" ry="6.3" fill="url(#sg3_13)" stroke="#58544C" stroke-width="0.8" transform="rotate(-1.5 215.6 461.9)"/>
+<ellipse cx="381.7" cy="514.7" rx="5.4" ry="2.5" fill="url(#sg3_14)" stroke="#58544C" stroke-width="0.8" transform="rotate(-23.4 381.7 514.7)"/>
+<ellipse cx="237.4" cy="450.9" rx="9.7" ry="6.0" fill="url(#sg3_15)" stroke="#58544C" stroke-width="0.8" transform="rotate(-5.5 237.4 450.9)"/>
+<ellipse cx="409.3" cy="412.8" rx="16.9" ry="13.2" fill="url(#sg3_17)" stroke="#58544C" stroke-width="0.8" transform="rotate(24.7 409.3 412.8)"/>
+<ellipse cx="198.0" cy="446.0" rx="10.1" ry="6.1" fill="url(#sg3_20)" stroke="#58544C" stroke-width="0.8" transform="rotate(-3.8 198.0 446.0)"/>
+<rect x="25" y="374.0" width="430" height="14.0" fill="url(#gSpec)" clip-path="url(#cpl3)"/>
+<rect x="25" y="528.0" width="430" height="16.0" fill="url(#gAO)" clip-path="url(#cpl3)"/>
+<polygon points="25.0,374.0 60.8,374.8 96.7,373.1 132.5,372.8 168.3,374.5 204.2,375.4 240.0,374.0 275.8,372.6 311.7,373.5 347.5,375.2 383.3,375.0 419.2,373.2 455.0,374.0 455.0,544.0 419.2,543.7 383.3,540.2 347.5,542.8 311.7,547.4 275.8,546.5 240.0,541.5 204.2,540.6 168.3,545.2 132.5,547.8 96.7,544.3 60.8,540.3 25.0,544.0" fill="none" stroke="#626262" stroke-width="0.6"/>
+<rect x="25" y="544.0" width="430" height="6" fill="url(#gBnd)" clip-path="url(#cpl4)"/>
+<polygon points="455,374.0 483,360.0 483,530.0 455,544.0" fill="url(#gR3)" stroke="#626262" stroke-width="0.6" stroke-linejoin="round"/>
+<text x="240.0" y="453.0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="bold" font-style="italic" fill="#1A1A1A" filter="url(#gTS)">Grava</text>
+<text x="240.0" y="468.0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#1A1A1A" opacity="0.88">2.80–4.50 m</text>
+<rect x="25" y="544.0" width="430" height="150.0" fill="url(#gL4)" clip-path="url(#cpl4)"/>
+<rect x="25" y="544.0" width="430" height="150.0" filter="url(#ftex_rock)" clip-path="url(#cpl4)" opacity="0.54"/>
+<rect x="25" y="544.0" width="430" height="150.0" fill="url(#pat_rock)" clip-path="url(#cpl4)" opacity="0.38"/>
+<ellipse cx="244.3" cy="618.5" rx="22.3" ry="14.2" fill="url(#sg4_0)" stroke="#545050" stroke-width="0.8" transform="rotate(2.3 244.3 618.5)"/>
+<ellipse cx="94.8" cy="566.1" rx="15.4" ry="7.6" fill="url(#sg4_1)" stroke="#545050" stroke-width="0.8" transform="rotate(-17.9 94.8 566.1)"/>
+<ellipse cx="297.4" cy="633.8" rx="22.5" ry="14.4" fill="url(#sg4_2)" stroke="#545050" stroke-width="0.8" transform="rotate(2.9 297.4 633.8)"/>
+<ellipse cx="140.9" cy="586.5" rx="17.5" ry="9.4" fill="url(#sg4_4)" stroke="#545050" stroke-width="0.8" transform="rotate(-11.8 140.9 586.5)"/>
+<ellipse cx="194.1" cy="604.8" rx="29.8" ry="18.9" fill="url(#sg4_6)" stroke="#545050" stroke-width="0.8" transform="rotate(24.5 194.1 604.8)"/>
+<ellipse cx="400.5" cy="658.3" rx="27.6" ry="21.9" fill="url(#sg4_7)" stroke="#545050" stroke-width="0.8" transform="rotate(18.0 400.5 658.3)"/>
+<ellipse cx="83.5" cy="654.5" rx="14.9" ry="7.2" fill="url(#sg4_12)" stroke="#545050" stroke-width="0.8" transform="rotate(-19.3 83.5 654.5)"/>
+<ellipse cx="56.4" cy="574.7" rx="13.7" ry="6.3" fill="url(#sg4_21)" stroke="#545050" stroke-width="0.8" transform="rotate(-22.8 56.4 574.7)"/>
+<rect x="25" y="544.0" width="430" height="14.0" fill="url(#gSpec)" clip-path="url(#cpl4)"/>
+<rect x="25" y="678.0" width="430" height="16.0" fill="url(#gAO)" clip-path="url(#cpl4)"/>
+<polygon points="25.0,544.0 60.8,540.3 96.7,544.3 132.5,547.8 168.3,545.2 204.2,540.6 240.0,541.5 275.8,546.5 311.7,547.4 347.5,542.8 383.3,540.2 419.2,543.7 455.0,544.0 455.0,694.0 419.2,694.0 383.3,694.0 347.5,694.0 311.7,694.0 275.8,694.0 240.0,694.0 204.2,694.0 168.3,694.0 132.5,694.0 96.7,694.0 60.8,694.0 25.0,694.0" fill="none" stroke="#242424" stroke-width="0.6"/>
+<polygon points="455,544.0 483,530.0 483,680.0 455,694.0" fill="url(#gR4)" stroke="#242424" stroke-width="0.6" stroke-linejoin="round"/>
+<text x="240.0" y="613.0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="bold" font-style="italic" fill="#FFFFFF" filter="url(#gTS)">Roca</text>
+<text x="240.0" y="628.0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#FFFFFF" opacity="0.88">4.50–6.00 m</text>
+</g>
+<line x1="25" y1="94.0" x2="25" y2="694.0" stroke="#2A2A2A" stroke-width="1.4"/>
+<line x1="455" y1="94.0" x2="455" y2="694.0" stroke="#2A2A2A" stroke-width="1.0"/>
+<line x1="15" y1="94.0" x2="15" y2="694.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<line x1="8" y1="94.0" x2="15" y2="94.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="97.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">0.00</text>
+<line x1="8" y1="144.0" x2="15" y2="144.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="147.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">0.50</text>
+<line x1="8" y1="194.0" x2="15" y2="194.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="197.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">1.00</text>
+<line x1="8" y1="244.0" x2="15" y2="244.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="247.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">1.50</text>
+<line x1="8" y1="294.0" x2="15" y2="294.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="297.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">2.00</text>
+<line x1="8" y1="344.0" x2="15" y2="344.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="347.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">2.50</text>
+<line x1="8" y1="394.0" x2="15" y2="394.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="397.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">3.00</text>
+<line x1="8" y1="444.0" x2="15" y2="444.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="447.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">3.50</text>
+<line x1="8" y1="494.0" x2="15" y2="494.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="497.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">4.00</text>
+<line x1="8" y1="544.0" x2="15" y2="544.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="547.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">4.50</text>
+<line x1="8" y1="594.0" x2="15" y2="594.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="597.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">5.00</text>
+<line x1="8" y1="644.0" x2="15" y2="644.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="647.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">5.50</text>
+<line x1="8" y1="694.0" x2="15" y2="694.0" stroke="#2A2A2A" stroke-width="1.5"/>
+<text x="5" y="697.5" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="8" fill="#2A2A2A">6.00</text>
+<line x1="11.5" y1="119.0" x2="15" y2="119.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="169.0" x2="15" y2="169.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="219.0" x2="15" y2="219.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="269.0" x2="15" y2="269.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="319.0" x2="15" y2="319.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="369.0" x2="15" y2="369.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="419.0" x2="15" y2="419.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="469.0" x2="15" y2="469.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="519.0" x2="15" y2="519.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="569.0" x2="15" y2="569.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="619.0" x2="15" y2="619.0" stroke="#555" stroke-width="0.8"/>
+<line x1="11.5" y1="669.0" x2="15" y2="669.0" stroke="#555" stroke-width="0.8"/>
+<text x="-11" y="394.0" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#444" transform="rotate(-90 -11 394.0)">Profundidad (m)</text>
+<line x1="483" y1="114.0" x2="499" y2="114.0" stroke="#C0C0C0" stroke-width="0.7" stroke-dasharray="4 3"/>
+<circle cx="483" cy="114.0" r="2.5" fill="#1B4D3E" stroke="#555" stroke-width="0.6"/>
+<text x="503" y="94.0" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="bold" fill="#1A1A1A">Material orgánico</text>
+<text x="503" y="107.0" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#444">0.00 – 0.40 m (e=0.40 m)</text>
+<text x="503" y="119.0" font-family="Arial, Helvetica, sans-serif" font-size="7" fill="#666" font-style="italic">negro verdoso</text>
+<text x="503" y="130.0" font-family="Arial, Helvetica, sans-serif" font-size="7" fill="#444">Capa organica superficial con raices</text>
+<line x1="483" y1="174.0" x2="499" y2="174.0" stroke="#C0C0C0" stroke-width="0.7" stroke-dasharray="4 3"/>
+<circle cx="483" cy="174.0" r="2.5" fill="#9B6B4A" stroke="#555" stroke-width="0.6"/>
+<text x="503" y="154.0" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="bold" fill="#1A1A1A">Arcilla</text>
+<text x="503" y="167.0" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#444">0.40 – 1.20 m (e=0.80 m)</text>
+<text x="503" y="179.0" font-family="Arial, Helvetica, sans-serif" font-size="7" fill="#666" font-style="italic">cafe rojizo</text>
+<text x="503" y="190.0" font-family="Arial, Helvetica, sans-serif" font-size="7" fill="#444">Arcilla de media plasticidad (CL)</text>
+<line x1="483" y1="294.0" x2="499" y2="294.0" stroke="#C0C0C0" stroke-width="0.7" stroke-dasharray="4 3"/>
+<circle cx="483" cy="294.0" r="2.5" fill="#9B8C00" stroke="#555" stroke-width="0.6"/>
+<text x="503" y="274.0" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="bold" fill="#1A1A1A">Arena fina</text>
+<text x="503" y="287.0" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#444">1.20 – 2.80 m (e=1.60 m)</text>
+<text x="503" y="299.0" font-family="Arial, Helvetica, sans-serif" font-size="7" fill="#666" font-style="italic">amarillo cafe</text>
+<text x="503" y="310.0" font-family="Arial, Helvetica, sans-serif" font-size="7" fill="#444">Arena fina limosa (SM)</text>
+<line x1="483" y1="459.0" x2="499" y2="459.0" stroke="#C0C0C0" stroke-width="0.7" stroke-dasharray="4 3"/>
+<circle cx="483" cy="459.0" r="2.5" fill="#D9D9D9" stroke="#555" stroke-width="0.6"/>
+<text x="503" y="439.0" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="bold" fill="#1A1A1A">Grava</text>
+<text x="503" y="452.0" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#444">2.80 – 4.50 m (e=1.70 m)</text>
+<text x="503" y="464.0" font-family="Arial, Helvetica, sans-serif" font-size="7" fill="#666" font-style="italic">gris claro</text>
+<text x="503" y="475.0" font-family="Arial, Helvetica, sans-serif" font-size="7" fill="#444">Grava con arena (GP-GM)</text>
+<line x1="483" y1="619.0" x2="499" y2="619.0" stroke="#C0C0C0" stroke-width="0.7" stroke-dasharray="4 3"/>
+<circle cx="483" cy="619.0" r="2.5" fill="#505050" stroke="#555" stroke-width="0.6"/>
+<text x="503" y="599.0" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="bold" fill="#1A1A1A">Roca</text>
+<text x="503" y="612.0" font-family="Arial, Helvetica, sans-serif" font-size="7.5" fill="#444">4.50 – 6.00 m (e=1.50 m)</text>
+<text x="503" y="624.0" font-family="Arial, Helvetica, sans-serif" font-size="7" fill="#666" font-style="italic">gris oscuro</text>
+<text x="503" y="635.0" font-family="Arial, Helvetica, sans-serif" font-size="7" fill="#444">Roca fracturada dura</text>
+<rect x="25" y="716" width="463" height="100" fill="#F4F4F2" stroke="#CCCCCC" stroke-width="0.9" rx="3"/>
+<text x="35" y="736" font-family="Arial, Helvetica, sans-serif" font-size="10" font-weight="bold" fill="#1A1A1A">LEYENDA</text>
+<line x1="35" y1="740" x2="105" y2="740" stroke="#1A1A1A" stroke-width="1"/>
+<rect x="35" y="752" width="17" height="17" fill="#1B4D3E" stroke="#555" stroke-width="0.7" rx="1"/>
+<rect x="35" y="752" width="17" height="17" fill="url(#pat_organic)" rx="1"/>
+<text x="58" y="766" font-family="Arial, Helvetica, sans-serif" font-size="8.5" fill="#1A1A1A">Material orgánico</text>
+<rect x="182" y="752" width="17" height="17" fill="#9B6B4A" stroke="#555" stroke-width="0.7" rx="1"/>
+<rect x="182" y="752" width="17" height="17" fill="url(#pat_clay)" rx="1"/>
+<text x="205" y="766" font-family="Arial, Helvetica, sans-serif" font-size="8.5" fill="#1A1A1A">Arcilla</text>
+<rect x="329" y="752" width="17" height="17" fill="#9B8C00" stroke="#555" stroke-width="0.7" rx="1"/>
+<rect x="329" y="752" width="17" height="17" fill="url(#pat_fine_sand)" rx="1"/>
+<text x="352" y="766" font-family="Arial, Helvetica, sans-serif" font-size="8.5" fill="#1A1A1A">Arena fina</text>
+<rect x="35" y="780" width="17" height="17" fill="#D9D9D9" stroke="#555" stroke-width="0.7" rx="1"/>
+<rect x="35" y="780" width="17" height="17" fill="url(#pat_gravel)" rx="1"/>
+<text x="58" y="794" font-family="Arial, Helvetica, sans-serif" font-size="8.5" fill="#1A1A1A">Grava</text>
+<rect x="182" y="780" width="17" height="17" fill="#505050" stroke="#555" stroke-width="0.7" rx="1"/>
+<rect x="182" y="780" width="17" height="17" fill="url(#pat_rock)" rx="1"/>
+<text x="205" y="794" font-family="Arial, Helvetica, sans-serif" font-size="8.5" fill="#1A1A1A">Roca</text>
+</svg>

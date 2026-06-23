@@ -30,6 +30,12 @@ export interface WordMunicipio {
   filename: string
 }
 
+export interface ValoresLaboratorio {
+  limite_liquido?: number
+  limite_plastico?: number
+  humedad?: number
+}
+
 export interface DocumentGenerationRequest {
   proyecto_ubicacion: string
   cliente?: string
@@ -42,6 +48,8 @@ export interface DocumentGenerationRequest {
   clasificaciones_por_lab?: Record<string, string>
   municipio_word?: string
   word_template_filename?: string
+  valores_laboratorio?: ValoresLaboratorio
+  valores_laboratorio_por_lab?: Record<string, ValoresLaboratorio>
 }
 
 export interface DocumentGenerationResponse {
@@ -120,6 +128,12 @@ export const generateDocuments = async (
     }
     if (request.municipio_word) form.append('municipio_word', request.municipio_word)
     if (request.word_template_filename) form.append('word_template_filename', request.word_template_filename)
+    if (request.valores_laboratorio && Object.keys(request.valores_laboratorio).length > 0) {
+      form.append('valores_laboratorio', JSON.stringify(request.valores_laboratorio))
+    }
+    if (request.valores_laboratorio_por_lab && Object.keys(request.valores_laboratorio_por_lab).length > 0) {
+      form.append('valores_laboratorio_por_lab', JSON.stringify(request.valores_laboratorio_por_lab))
+    }
 
     if (images && images.length) {
       images.forEach((file) => form.append('files', file, file.name))

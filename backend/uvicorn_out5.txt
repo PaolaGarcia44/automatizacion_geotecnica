@@ -1,0 +1,2 @@
+INFO:     127.0.0.1:59703 - "POST /api/generate HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59703 - "GET /api/download/paola_garcia%20-%20BELLO_PROYECTO_DE_3_NIVELES%20-%20Taraza.zip HTTP/1.1" 200 OK
