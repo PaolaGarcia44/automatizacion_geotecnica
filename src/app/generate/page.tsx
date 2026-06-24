@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from 'react'
-import { generateDocuments, getWordMunicipios, buildDownloadUrl, downloadGeneratedFile, type PerforacionData, type WordMunicipio, type ValoresLaboratorio } from '@/services/documentService'
+import { generateDocuments, getWordMunicipios, buildDownloadUrl, downloadGeneratedFile, type PerforacionData, type ValoresLaboratorio } from '@/services/documentService'
 import { Building2, Check, AlertCircle, Download, Plus, X } from 'lucide-react'
 import { MainLayout } from '@/layouts/MainLayout'
 import { Button } from '@/components/ui/button'
@@ -159,7 +159,7 @@ const MUNICIPIOS_ESTATICOS: string[] = [
 interface MunicipioOption { name: string; filename?: string }
 
 export default function GenerarPage() {
-  const { soilTypes, addSoilType, removeSoilType, isLoaded } = useSoilTypes()
+  const { soilTypes, addSoilType, isLoaded } = useSoilTypes()
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
@@ -178,6 +178,10 @@ export default function GenerarPage() {
   const [newSoilType, setNewSoilType] = useState('')
   const [showCustomSoilInput, setShowCustomSoilInput] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [progressMsg, setProgressMsg] = useState('')
+  const [elapsedSecs, setElapsedSecs] = useState(0)
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Municipality autocomplete state
   const [munInput, setMunInput] = useState('')
@@ -192,13 +196,13 @@ export default function GenerarPage() {
     getWordMunicipios().then((list) => {
       if (!list.length) return
       const backendMap = new Map(list.map((m) => [m.municipio.toLowerCase(), m.filename]))
+      const staticLower = new Set(MUNICIPIOS_ESTATICOS.map((s) => s.toLowerCase()))
       const merged: MunicipioOption[] = MUNICIPIOS_ESTATICOS.map((name) => ({
         name,
         filename: backendMap.get(name.toLowerCase()),
       }))
       list.forEach((m) => {
-        const key = m.municipio.toLowerCase()
-        if (!MUNICIPIOS_ESTATICOS.some((s) => s.toLowerCase() === key))
+        if (!staticLower.has(m.municipio.toLowerCase()))
           merged.push({ name: m.municipio, filename: m.filename })
       })
       setMunOptions(merged.sort((a, b) => a.name.localeCompare(b.name, 'es')))
@@ -268,27 +272,45 @@ export default function GenerarPage() {
     setIsSubmitting(true)
     setErrorMessage('')
     setDownloadUrl('')
+    setElapsedSecs(0)
+
+    const PROGRESS_MSGS = [
+      'Generando Excel de capacidad portante...',
+      'Procesando correlación geotécnica...',
+      'Calculando parámetros de laboratorio...',
+      'Generando plantillas P-1, P-2, P-3...',
+      'Generando perfil del suelo...',
+      'Generando informe Word...',
+      'Armando carpeta ZIP...',
+    ]
+    let msgIdx = 0
+    setProgressMsg(PROGRESS_MSGS[0])
+    progressTimerRef.current = setInterval(() => {
+      msgIdx = (msgIdx + 1) % PROGRESS_MSGS.length
+      setProgressMsg(PROGRESS_MSGS[msgIdx])
+    }, 3000)
+    elapsedTimerRef.current = setInterval(() => {
+      setElapsedSecs((s) => s + 1)
+    }, 1000)
 
     try {
       const nPisos = Number(pisos)
       const perforaciones = soilLayers
         .map<PerforacionData | null>((layer, index) => {
           const profundidad = Number(layer.profundidad_z)
-          const tipo = layer.tipo_suelo_principal.trim()
-          const color = layer.color_predominante.trim()
+          const tipo = layer.tipo_suelo_principal.trim().toUpperCase()
+          const color = layer.color_predominante.trim().toUpperCase()
 
           if (!tipo && !color && !layer.profundidad_z.trim()) {
             return null
           }
-
-          const descripcion = tipo.trim()
 
           return {
             profundidad_z: Number.isFinite(profundidad) && profundidad > 0 ? profundidad : index + 1,
             gamma: null,
             n_campo_spt: 0,
             cohesion_c: null,
-            descripcion_suelo: descripcion || color,
+            descripcion_suelo: tipo || color,
             tipo_suelo_principal: tipo || null,
             color_predominante: color || null,
           }
@@ -319,8 +341,8 @@ export default function GenerarPage() {
 
       const payload = {
         // backend decidirá la plantilla según 'pisos' y generará perforaciones por defecto
-        proyecto_ubicacion: proyectoUbicacion.toUpperCase(),
-        cliente: cliente.trim(),
+        proyecto_ubicacion: proyectoUbicacion.toUpperCase().trim(),
+        cliente: cliente.toUpperCase().trim(),
         fecha_registro: fechaRegistro,
         pisos: nPisos,
         template_ids: nPisos <= 3 ? ['4', '5', '6'] : ['4', '5', '6', '7'],
@@ -351,7 +373,17 @@ export default function GenerarPage() {
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Error desconocido al generar documentos')
     } finally {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current)
+        progressTimerRef.current = null
+      }
+      if (elapsedTimerRef.current) {
+        clearInterval(elapsedTimerRef.current)
+        elapsedTimerRef.current = null
+      }
       setIsSubmitting(false)
+      setProgressMsg('')
+      setElapsedSecs(0)
     }
   }
 
@@ -360,26 +392,26 @@ export default function GenerarPage() {
       <div className='page-padding container-main'>
         <div className='mx-auto flex max-w-4xl flex-col gap-8 py-4 sm:py-8'>
           <div className='text-center space-y-3'>
-            <span className='inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 shadow-sm'>
+            <span className='inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 shadow-sm dark:border-secondary-700 dark:bg-secondary-800/80 dark:text-slate-400'>
               Generación automática
             </span>
-            <h1 className='text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl'>Automatización geotécnica</h1>
-            <p className='mx-auto max-w-2xl text-base text-gray-600 sm:text-lg'>
+            <h1 className='text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl dark:text-gray-100'>Automatización geotécnica</h1>
+            <p className='mx-auto max-w-2xl text-base text-gray-600 sm:text-lg dark:text-gray-400'>
               Completa el formulario y genera una copia editable de la plantilla Excel seleccionada.
             </p>
           </div>
 
           {errorMessage && (
-            <Card className='border-red-200 bg-red-50 shadow-sm'>
+            <Card className='border-red-200 bg-red-50 shadow-sm dark:border-red-800 dark:bg-red-950/50'>
               <CardContent className='pt-6 flex gap-3'>
-                <AlertCircle className='h-5 w-5 text-red-600 flex-shrink-0 mt-0.5' />
-                <p className='text-red-700'>{errorMessage}</p>
+                <AlertCircle className='h-5 w-5 text-red-600 flex-shrink-0 mt-0.5 dark:text-red-400' />
+                <p className='text-red-700 dark:text-red-400'>{errorMessage}</p>
               </CardContent>
             </Card>
           )}
 
-          <Card className='border-gray-200 shadow-xl shadow-slate-200/60 overflow-hidden'>
-            <CardHeader className='border-b border-gray-200 bg-gradient-to-r from-slate-50 via-white to-emerald-50'>
+          <Card className='border-gray-200 shadow-xl shadow-slate-200/60 overflow-hidden dark:border-secondary-700 dark:shadow-secondary-900/60'>
+            <CardHeader className='border-b border-gray-200 bg-gradient-to-r from-slate-50 via-white to-emerald-50 dark:border-secondary-700 dark:from-secondary-900 dark:via-secondary-800 dark:to-secondary-900'>
               <CardTitle className='flex items-center justify-center gap-2 text-lg'>
                 <Building2 className='h-5 w-5 text-green-600' />
                 Datos mínimos para generación
@@ -392,10 +424,9 @@ export default function GenerarPage() {
                   id='proyecto-ubicacion'
                   placeholder='Ej: Construcción de una casa campestre de 2 niveles ubicada en ...'
                   value={proyectoUbicacion}
-                  onChange={(e) => setProyectoUbicacion(e.target.value)}
-                  className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm'
+                  onChange={(e) => setProyectoUbicacion(e.target.value.toUpperCase())}
+                  className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm dark:border-secondary-600 dark:bg-secondary-700/90'
                 />
-                <p className='text-sm text-gray-500'>Se guardará y enviará automáticamente en mayúsculas.</p>
               </div>
 
               <div className='space-y-2'>
@@ -404,8 +435,8 @@ export default function GenerarPage() {
                   id='cliente'
                   placeholder='Ej: Constructora ABC S.A.S.'
                   value={cliente}
-                  onChange={(e) => setCliente(e.target.value)}
-                  className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm'
+                  onChange={(e) => setCliente(e.target.value.toUpperCase())}
+                  className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm dark:border-secondary-600 dark:bg-secondary-700/90'
                 />
               </div>
 
@@ -417,7 +448,7 @@ export default function GenerarPage() {
                     type='date'
                     value={fechaRegistro}
                     onChange={(e) => setFechaRegistro(e.target.value)}
-                    className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm'
+                    className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm dark:border-secondary-600 dark:bg-secondary-700/90'
                   />
                 </div>
                 <div className='space-y-2'>
@@ -429,15 +460,15 @@ export default function GenerarPage() {
                     min='0'
                     value={pisos === '' ? '' : String(pisos)}
                     onChange={(e) => setPisos(e.target.value === '' ? '' : Number(e.target.value))}
-                    className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm'
+                    className='h-12 rounded-xl border-slate-200 bg-white/90 shadow-sm dark:border-secondary-600 dark:bg-secondary-700/90'
                   />
                 </div>
               </div>
 
               {/* ── Municipio del informe Word — autocomplete ──────────────── */}
-              <div className='border-t border-slate-100 pt-5 space-y-2'>
+              <div className='border-t border-slate-100 dark:border-secondary-700 pt-5 space-y-2'>
                 <Label>Municipio del informe Word</Label>
-                <p className='text-xs text-slate-500'>
+                <p className='text-xs text-slate-500 dark:text-slate-400'>
                   Escribe el nombre del municipio. Si existe plantilla propia se usará automáticamente; si no, se usará la plantilla base.
                 </p>
 
@@ -447,13 +478,13 @@ export default function GenerarPage() {
                     value={munInput}
                     autoComplete='off'
                     onChange={(e) => {
-                      setMunInput(e.target.value)
+                      setMunInput(e.target.value.toUpperCase())
                       setMunOption(null)
                       setMunDropdownOpen(true)
                     }}
                     onFocus={() => setMunDropdownOpen(true)}
                     onBlur={() => setTimeout(() => setMunDropdownOpen(false), 150)}
-                    className='h-11 rounded-xl border-slate-200 bg-white/90 shadow-sm pr-9'
+                    className='h-11 rounded-xl border-slate-200 bg-white/90 shadow-sm pr-9 dark:border-secondary-600 dark:bg-secondary-700/90'
                   />
                   {munInput && (
                     <button
@@ -466,21 +497,21 @@ export default function GenerarPage() {
                   )}
 
                   {munDropdownOpen && munSuggestions.length > 0 && (
-                    <div className='absolute z-50 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden'>
+                    <div className='absolute z-50 mt-1 w-full rounded-xl border border-slate-200 bg-white shadow-lg overflow-hidden dark:border-secondary-700 dark:bg-secondary-800'>
                       <div className='max-h-52 overflow-y-auto'>
                         {munSuggestions.map((m, i) => (
                           <button
                             key={i}
                             type='button'
                             onMouseDown={() => {
-                              setMunInput(m.name)
+                              setMunInput(m.name.toUpperCase())
                               setMunOption(m)
                               setMunDropdownOpen(false)
                             }}
                             className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-2 ${
                               munOption?.name === m.name
-                                ? 'bg-emerald-50 text-emerald-800 font-medium'
-                                : 'text-slate-700 hover:bg-slate-50'
+                                ? 'bg-emerald-50 text-emerald-800 font-medium dark:bg-emerald-900/30 dark:text-emerald-300'
+                                : 'text-slate-700 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-secondary-700'
                             }`}
                           >
                             <span>{m.name}</span>
@@ -503,7 +534,7 @@ export default function GenerarPage() {
                   </p>
                 )}
                 {munInput.trim() && !munOption && (
-                  <p className='text-xs text-slate-500'>
+                  <p className='text-xs text-slate-500 dark:text-slate-400'>
                     Municipio personalizado — se usará la plantilla base con el nombre &ldquo;{munInput.trim()}&rdquo;
                   </p>
                 )}
@@ -511,19 +542,19 @@ export default function GenerarPage() {
             </CardContent>
           </Card>
 
-          <Card className='border-slate-200/80 bg-white/90 shadow-lg shadow-slate-200/50 overflow-hidden'>
-            <CardHeader className='border-b border-slate-200 bg-slate-50/80'>
+          <Card className='border-slate-200/80 bg-white/90 shadow-lg shadow-slate-200/50 overflow-hidden dark:border-secondary-700 dark:bg-secondary-800/90 dark:shadow-secondary-900/50'>
+            <CardHeader className='border-b border-slate-200 bg-slate-50/80 dark:border-secondary-700 dark:bg-secondary-900/80'>
               <CardTitle className='text-center text-lg'>Capas de suelo</CardTitle>
             </CardHeader>
             <CardContent className='space-y-4 p-6 sm:p-8'>
-              <p className='text-center text-sm text-slate-500'>Selecciona el tipo de suelo y su color predominante para cada capa.</p>
+              <p className='text-center text-sm text-slate-500 dark:text-slate-400'>Selecciona el tipo de suelo y su color predominante para cada capa.</p>
 
               {/* Custom Soil Type Input */}
-              <div className='bg-blue-50 border border-blue-200 rounded-lg p-4'>
+              <div className='bg-blue-50 border border-blue-200 rounded-lg p-4 dark:bg-blue-950/30 dark:border-blue-900'>
                 <button
                   type='button'
                   onClick={() => setShowCustomSoilInput(!showCustomSoilInput)}
-                  className='inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700'
+                  className='inline-flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300'
                 >
                   <Plus className='h-4 w-4' />
                   {showCustomSoilInput ? 'Cancelar' : 'Agregar tipo de suelo personalizado'}
@@ -543,7 +574,7 @@ export default function GenerarPage() {
                           setShowCustomSoilInput(false)
                         }
                       }}
-                      className='h-10 rounded-lg border-blue-300 bg-white text-sm'
+                      className='h-10 rounded-lg border-blue-300 bg-white text-sm dark:border-blue-800 dark:bg-secondary-700'
                     />
                     <div className='flex gap-2'>
                       <Button
@@ -560,12 +591,12 @@ export default function GenerarPage() {
                       </Button>
                       <Button
                         onClick={() => setShowCustomSoilInput(false)}
-                        className='h-8 bg-gray-300 text-gray-700 text-xs'
+                        className='h-8 bg-gray-300 text-gray-700 text-xs dark:bg-secondary-600 dark:text-secondary-200'
                       >
                         Cancelar
                       </Button>
                     </div>
-                    <p className='text-xs text-gray-600'>
+                    <p className='text-xs text-gray-600 dark:text-gray-400'>
                       Se guardará automáticamente en tu navegador para futuras sesiones.
                     </p>
                   </div>
@@ -577,7 +608,7 @@ export default function GenerarPage() {
               </div>
               <div className='grid gap-4'>
                 {soilLayers.map((layer, index) => (
-                  <div key={index} className='relative grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 shadow-sm sm:grid-cols-[1.2fr_0.8fr]'>
+                  <div key={index} className='relative grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 shadow-sm sm:grid-cols-[1.2fr_0.8fr] dark:border-secondary-700 dark:bg-secondary-900/70'>
                     <div className='absolute right-3 top-3'>
                       <button
                         type='button'
@@ -607,7 +638,7 @@ export default function GenerarPage() {
                           }
                           setSoilLayers(next)
                         }}
-                        className='h-12 rounded-xl border-slate-200 bg-white shadow-sm'
+                        className='h-12 rounded-xl border-slate-200 bg-white shadow-sm dark:border-secondary-600 dark:bg-secondary-700'
                       />
                     </div>
 
@@ -627,7 +658,7 @@ export default function GenerarPage() {
                           setSoilLayers(next)
                         }}
                         disabled={!isLoaded}
-                        className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm shadow-sm outline-none transition focus:border-blue-500 disabled:opacity-50'
+                        className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm shadow-sm outline-none transition focus:border-blue-500 disabled:opacity-50 dark:border-secondary-600 dark:bg-secondary-700 dark:text-secondary-100'
                       >
                         <option value=''>{isLoaded ? 'Selecciona un tipo de suelo' : 'Cargando...'}</option>
                         {soilTypes.map((option) => (
@@ -653,7 +684,7 @@ export default function GenerarPage() {
                           }
                           setSoilLayers(next)
                         }}
-                        className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm shadow-sm outline-none transition focus:border-blue-500'
+                        className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm shadow-sm outline-none transition focus:border-blue-500 dark:border-secondary-600 dark:bg-secondary-700 dark:text-secondary-100'
                       >
                         <option value=''>Selecciona un color</option>
                         {SOIL_COLOR_OPTIONS.map((option) => (
@@ -670,20 +701,20 @@ export default function GenerarPage() {
           </Card>
 
           {/* Clasificación de suelo USCS */}
-          <Card className='border-gray-200 shadow-lg shadow-slate-200/50 overflow-hidden'>
-            <CardHeader className='border-b border-gray-200 bg-slate-50/80'>
+          <Card className='border-gray-200 shadow-lg shadow-slate-200/50 overflow-hidden dark:border-secondary-700 dark:shadow-secondary-900/50'>
+            <CardHeader className='border-b border-gray-200 bg-slate-50/80 dark:border-secondary-700 dark:bg-secondary-900/80'>
               <CardTitle className='text-center text-lg'>Clasificación de suelo (Laboratorio)</CardTitle>
             </CardHeader>
             <CardContent className='p-6 sm:p-8 space-y-5'>
               {/* Clasificación general */}
               <div className='space-y-2'>
                 <Label htmlFor='clasificacion-general'>Clasificación USCS (General)</Label>
-                <p className='text-xs text-slate-500'>Se aplica a todos los laboratorios del informe.</p>
+                <p className='text-xs text-slate-500 dark:text-slate-400'>Se aplica a todos los laboratorios del informe.</p>
                 <select
                   id='clasificacion-general'
                   value={clasificacionGeneral}
                   onChange={(e) => setClasificacionGeneral(e.target.value)}
-                  className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm shadow-sm outline-none transition focus:border-blue-500'
+                  className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm shadow-sm outline-none transition focus:border-blue-500 dark:border-secondary-600 dark:bg-secondary-700 dark:text-secondary-100'
                 >
                   {USCS_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -692,22 +723,22 @@ export default function GenerarPage() {
               </div>
 
               {/* Toggle personalización */}
-              <label className='flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 select-none'>
+              <label className='flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 select-none dark:border-secondary-700 dark:bg-secondary-900/50'>
                 <input
                   type='checkbox'
                   checked={personalizarPorLab}
                   onChange={(e) => setPersonalizarPorLab(e.target.checked)}
                   className='h-4 w-4 rounded accent-blue-600'
                 />
-                <span className='text-sm font-medium text-slate-700'>Personalizar clasificación por laboratorio</span>
+                <span className='text-sm font-medium text-slate-700 dark:text-slate-300'>Personalizar clasificación por laboratorio</span>
               </label>
 
               {/* Selectores individuales con valores manuales por laboratorio */}
               {personalizarPorLab && (
                 <div className='grid gap-4 sm:grid-cols-2'>
                   {(['lab1', 'lab2', 'lab3', 'lab4'] as const).map((labKey, idx) => (
-                    <div key={labKey} className='rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2'>
-                      <Label htmlFor={`clf-${labKey}`} className='text-xs font-semibold text-slate-700'>
+                    <div key={labKey} className='rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-2 dark:border-secondary-700 dark:bg-secondary-900/60'>
+                      <Label htmlFor={`clf-${labKey}`} className='text-xs font-semibold text-slate-700 dark:text-slate-300'>
                         Laboratorio {idx + 1}{idx === 3 ? <span className='ml-1 font-normal text-slate-400'>(solo &gt;3 pisos)</span> : null}
                       </Label>
                       <select
@@ -716,7 +747,7 @@ export default function GenerarPage() {
                         onChange={(e) =>
                           setClasificacionesPorLab((prev) => ({ ...prev, [labKey]: e.target.value }))
                         }
-                        className='h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs shadow-sm outline-none transition focus:border-blue-500'
+                        className='h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs shadow-sm outline-none transition focus:border-blue-500 dark:border-secondary-600 dark:bg-secondary-700 dark:text-secondary-100'
                       >
                         {USCS_OPTIONS.map((o) => (
                           <option key={o.value} value={o.value}>{o.label}</option>
@@ -725,7 +756,7 @@ export default function GenerarPage() {
 
                       {/* Valores manuales para este laboratorio */}
                       <div className='pt-1 space-y-1'>
-                        <p className='text-xs text-slate-500'>Valores manuales — opcional</p>
+                        <p className='text-xs text-slate-500 dark:text-slate-400'>Valores manuales — opcional</p>
                         <div className='grid grid-cols-3 gap-1.5'>
                           {(
                             [
@@ -751,8 +782,8 @@ export default function GenerarPage() {
                                   }
                                   className={`h-8 rounded-lg text-xs shadow-sm ${
                                     invalid
-                                      ? 'border-red-400 bg-red-50'
-                                      : 'border-slate-200 bg-white focus:border-blue-500'
+                                      ? 'border-red-400 bg-red-50 dark:border-red-700 dark:bg-red-950/50'
+                                      : 'border-slate-200 bg-white focus:border-blue-500 dark:border-secondary-600 dark:bg-secondary-700'
                                   }`}
                                 />
                               </div>
@@ -767,12 +798,12 @@ export default function GenerarPage() {
             </CardContent>
           </Card>
 
-          <Card className='border-gray-200 shadow-lg shadow-slate-200/50 overflow-hidden'>
-            <CardHeader className='border-b border-gray-200 bg-slate-50/80'>
+          <Card className='border-gray-200 shadow-lg shadow-slate-200/50 overflow-hidden dark:border-secondary-700 dark:shadow-secondary-900/50'>
+            <CardHeader className='border-b border-gray-200 bg-slate-50/80 dark:border-secondary-700 dark:bg-secondary-900/80'>
               <CardTitle className='text-center text-lg'>Imágenes</CardTitle>
             </CardHeader>
             <CardContent className='p-6 sm:p-8'>
-              <p className='text-sm text-slate-500 mb-4'>
+              <p className='text-sm text-slate-500 mb-4 dark:text-slate-400'>
                 Selecciona una carpeta con las imágenes del sondeo. Se incluirán en la carpeta ZIP dentro de la carpeta <em>imagenes</em>.
                 <span className='text-red-500 font-medium'> Obligatorio para generar el ZIP.</span>
               </p>
@@ -796,7 +827,7 @@ export default function GenerarPage() {
                 <button
                   type='button'
                   onClick={() => fileInputRef.current?.click()}
-                  className='inline-flex w-fit cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50'
+                  className='inline-flex w-fit cursor-pointer items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-secondary-600 dark:bg-secondary-700 dark:text-secondary-200 dark:hover:bg-secondary-600'
                 >
                   Seleccionar carpeta de imágenes
                 </button>
@@ -829,7 +860,7 @@ export default function GenerarPage() {
                 setMunInput('')
                 setMunOption(null)
               }}
-              className='h-12 min-w-40 rounded-xl border-slate-300 bg-white/90 px-6 shadow-sm'
+              className='h-12 min-w-40 rounded-xl border-slate-300 bg-white/90 px-6 shadow-sm dark:border-secondary-600 dark:bg-secondary-800/90 dark:text-secondary-100 dark:hover:bg-secondary-700/90'
             >
               Limpiar
             </Button>
@@ -837,29 +868,45 @@ export default function GenerarPage() {
             <Button
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className='h-12 min-w-56 gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-slate-900 px-6 text-white shadow-lg shadow-blue-200 hover:from-blue-500 hover:to-slate-800'
+              className='h-12 min-w-56 gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-slate-900 px-6 text-white shadow-lg shadow-blue-200 hover:from-blue-500 hover:to-slate-800 disabled:opacity-80'
               title='Genera una carpeta ZIP con varios Excel según el número de pisos'
             >
+              {isSubmitting ? (
+                <span className='inline-flex items-center gap-2'>
+                  <svg className='h-4 w-4 animate-spin' xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24'>
+                    <circle className='opacity-25' cx='12' cy='12' r='10' stroke='currentColor' strokeWidth='4' />
+                    <path className='opacity-75' fill='currentColor' d='M4 12a8 8 0 018-8v8H4z' />
+                  </svg>
+                  {elapsedSecs > 0 ? `${elapsedSecs}s` : 'Generando...'}
+                </span>
+              ) : (
                 <span className='inline-flex items-center gap-2'>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                   </svg>
                   Generar carpeta ZIP
                 </span>
+              )}
             </Button>
           </div>
+
+          {isSubmitting && progressMsg && (
+            <p className='mt-3 text-center text-sm text-slate-500 animate-pulse dark:text-slate-400'>
+              {progressMsg}
+            </p>
+          )}
         </div>
 
         <Dialog open={showSuccessModal} onOpenChange={setShowSuccessModal}>
           <DialogContent className='sm:max-w-md'>
             <div className='flex flex-col items-center gap-4 py-6'>
-              <div className='w-12 h-12 bg-green-100 rounded-full flex items-center justify-center'>
-                <Check className='h-6 w-6 text-green-600' />
+              <div className='w-12 h-12 bg-green-100 rounded-full flex items-center justify-center dark:bg-green-900/30'>
+                <Check className='h-6 w-6 text-green-600 dark:text-green-400' />
               </div>
-              <h2 className='text-lg font-semibold text-gray-900'>
+              <h2 className='text-lg font-semibold text-gray-900 dark:text-gray-100'>
                 ¡Documentos Generados!
               </h2>
-              <p className='text-center text-gray-600 whitespace-pre-line'>{successMessage}</p>
+              <p className='text-center text-gray-600 whitespace-pre-line dark:text-gray-400'>{successMessage}</p>
               {downloadUrl && (
                 <Button onClick={() => downloadGeneratedFile(downloadUrl)} className='w-full gap-2'>
                   <Download className='h-4 w-4' />

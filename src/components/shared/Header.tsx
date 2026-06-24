@@ -2,9 +2,7 @@
 
 import { usePathname } from 'next/navigation'
 
-interface HeaderProps {}
-
-export function Header(_: HeaderProps) {
+export function Header() {
   const pathname = usePathname()
 
   const getBreadcrumb = () => {
@@ -17,14 +15,11 @@ export function Header(_: HeaderProps) {
   }
 
   return (
-    <header className='h-16 border-b border-secondary-200 bg-white shadow-sm'>
-      <div className='flex h-full items-center justify-between px-6'>
-        {/* Breadcrumb */}
-        <div className='flex items-center gap-2'>
-          <h2 className='text-lg font-semibold text-secondary-900'>
-            {getBreadcrumb()}
-          </h2>
-        </div>
+    <header className='h-16 border-b border-secondary-200 bg-white shadow-sm dark:border-secondary-700 dark:bg-secondary-800 dark:shadow-none'>
+      <div className='flex h-full items-center px-6'>
+        <h2 className='text-lg font-semibold text-secondary-900 dark:text-secondary-100'>
+          {getBreadcrumb()}
+        </h2>
       </div>
     </header>
   )

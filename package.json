@@ -2,11 +2,17 @@
   "name": "automatizacion_geotecnica",
   "version": "0.1.0",
   "private": true,
+  "description": "Automatización Geotécnica — generación de documentos geotécnicos",
+  "author": "Tecnológico de Antioquia",
+  "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "electron:dev": "concurrently --kill-others-on-fail --names \"NEXT,ELECTRON\" --prefix-colors \"cyan,yellow\" \"next dev\" \"wait-on --timeout 120000 http://localhost:3000/generate/ && node electron/launch.js\"",
+    "electron:build": "next build && electron-builder --win",
+    "electron:preview": "node electron/launch.js"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.1",
@@ -34,7 +40,62 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "concurrently": "^8.2.2",
+    "electron": "^32.3.3",
+    "electron-builder": "^24.13.3",
     "eslint": "^8.56.0",
-    "eslint-config-next": "^14.2.35"
+    "eslint-config-next": "^14.2.35",
+    "sharp": "^0.35.2",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.autogeo.geotecnica",
+    "productName": "AutoGeo",
+    "copyright": "Tecnológico de Antioquia",
+    "asar": false,
+    "directories": {
+      "output": "dist_electron",
+      "buildResources": "electron/build"
+    },
+    "files": [
+      "electron/main.js",
+      "electron/preload.js",
+      "out/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "backend/dist/autogeo_backend",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AutoGeo",
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "es_ES"
+      ],
+      "language": "3082"
+    },
+    "publish": null
   }
 }

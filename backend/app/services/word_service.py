@@ -12,10 +12,15 @@ from typing import Dict, List, Optional, Tuple
 from docx import Document
 
 from app.core.config import settings
+from app.services.resource_manager import resource_manager
+from app.utils.common import parse_fecha as _common_parse_fecha, split_project_location as _common_split_location
 
 logger = logging.getLogger(__name__)
 
 INFORME_TEMPLATE_FILENAME = "INFORME BASE SAN PEDRO.docx"
+# Municipality that the base template is written for — used to substitute text
+# when the base template is applied to a different location.
+INFORME_BASE_MUNICIPIO = "SAN PEDRO"
 
 # ── Municipality list for template matching ──────────────────────────────────
 _LUGARES_RAW: List[str] = [
@@ -143,37 +148,12 @@ class WordService:
     # ── Internal helpers ──────────────────────────────────────────────────────
 
     def _split_project_location(self, value: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
-        if value is None:
-            return None, None
-        text = str(value).strip()
-        if not text:
-            return None, None
-
-        separators = [" - ", " | ", " / ", " — ", " – ", "\n", "-"]
-        for separator in separators:
-            if separator in text:
-                left, right = text.split(separator, 1)
-                left = left.strip(" -|/,\t\r\n")
-                right = right.strip(" -|/,\t\r\n")
-                if left and right:
-                    return left, right
-
-        return text, None
+        """Delega a common.split_project_location — fuente única de verdad."""
+        return _common_split_location(value)
 
     def _parse_fecha(self, fecha_registro) -> Optional[date]:
-        if isinstance(fecha_registro, date) and not isinstance(fecha_registro, datetime):
-            return fecha_registro
-        if isinstance(fecha_registro, datetime):
-            return fecha_registro.date()
-        if isinstance(fecha_registro, str):
-            try:
-                return datetime.fromisoformat(fecha_registro).date()
-            except Exception:
-                try:
-                    return date.fromisoformat(fecha_registro)
-                except Exception:
-                    return None
-        return None
+        """Delega a common.parse_fecha — fuente única de verdad."""
+        return _common_parse_fecha(fecha_registro)
 
     def _format_fecha_for_name(self, fecha_obj: Optional[date], fecha_fallback) -> str:
         if fecha_obj is not None:
@@ -220,6 +200,151 @@ class WordService:
             for extra_paragraph in header.paragraphs[1:]:
                 extra_paragraph.text = ""
 
+    # ── Placeholder replacement ───────────────────────────────────────────────
+
+    def _replace_in_paragraph(self, paragraph, replacements: Dict[str, str]) -> None:
+        """Replace placeholder strings in a paragraph, handling run-split text.
+
+        python-docx can split a single word across multiple runs due to spell-check
+        or formatting changes. We join all run texts, replace, then put the result
+        back into the first run to preserve its character formatting.
+        """
+        if not paragraph.runs:
+            return
+        original = "".join(run.text for run in paragraph.runs)
+        if not original:
+            return
+        updated = original
+        for old, new in replacements.items():
+            updated = updated.replace(old, str(new))
+        if updated != original:
+            paragraph.runs[0].text = updated
+            for run in paragraph.runs[1:]:
+                run.text = ""
+
+    def _process_body(self, container, replacements: Dict[str, str]) -> None:
+        """Recursively process paragraphs and tables in a document body or cell."""
+        for paragraph in container.paragraphs:
+            self._replace_in_paragraph(paragraph, replacements)
+        for table in container.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    self._process_body(cell, replacements)
+
+    def _build_replacements(
+        self,
+        proyecto_ubicacion: str,
+        fecha_registro,
+        municipio_word: Optional[str] = None,
+        cliente: Optional[str] = None,
+        sondeo: Optional[str] = None,
+        pisos: Optional[int] = None,
+        perforaciones: Optional[List[Dict]] = None,
+        clasificacion_suelo: Optional[str] = None,
+    ) -> Dict[str, str]:
+        """Build the placeholder→value map used to fill the Word document.
+
+        Placeholders follow the {{NOMBRE}} convention. Add these tags to the
+        Word base template wherever dynamic data should appear.
+        """
+        fecha_obj = self._parse_fecha(fecha_registro)
+        _MESES_ES = [
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+        ]
+        if fecha_obj:
+            fecha_larga = f"{fecha_obj.day} de {_MESES_ES[fecha_obj.month - 1]} de {fecha_obj.year}"
+            fecha_corta = fecha_obj.strftime("%d/%m/%Y")
+            año = str(fecha_obj.year)
+        else:
+            fecha_larga = str(fecha_registro or "")
+            fecha_corta = fecha_larga
+            año = ""
+
+        _, ubicacion = self._split_project_location(proyecto_ubicacion)
+        ubicacion_text = (ubicacion or proyecto_ubicacion or "").strip().upper()
+        municipio_text = (municipio_word or "").strip().upper()
+
+        # Build a plain-text description of soil layers for insertion in the document
+        descripcion_capas = ""
+        profundidad_total = ""
+        if perforaciones:
+            partes: List[str] = []
+            max_prof = 0.0
+            for i, p in enumerate(perforaciones, 1):
+                desc = (p.get("descripcion_suelo") or p.get("tipo_suelo_principal") or "").strip()
+                prof = p.get("profundidad_z")
+                color = (p.get("color_predominante") or "").strip().lower()
+                try:
+                    v = float(str(prof).replace(",", "."))
+                    if v > max_prof:
+                        max_prof = v
+                except Exception:
+                    pass
+                if desc:
+                    parte = f"Capa {i}: {desc}"
+                    if color:
+                        parte += f", color {color}"
+                    if prof:
+                        parte += f", hasta {prof}m de profundidad"
+                    partes.append(parte)
+            descripcion_capas = ". ".join(partes) if partes else ""
+            profundidad_total = f"{max_prof:.1f}" if max_prof > 0 else ""
+
+        return {
+            "{{PROYECTO}}": (proyecto_ubicacion or "").upper(),
+            "{{UBICACION}}": ubicacion_text,
+            "{{CLIENTE}}": (cliente or "").upper(),
+            "{{FECHA}}": fecha_larga,
+            "{{FECHA_CORTA}}": fecha_corta,
+            "{{AÑO}}": año,
+            "{{MUNICIPIO}}": municipio_text,
+            "{{SONDEO}}": sondeo or "",
+            "{{PISOS}}": str(pisos) if pisos is not None else "",
+            "{{N_PISOS}}": str(pisos) if pisos is not None else "",
+            "{{CLASIFICACION}}": (clasificacion_suelo or "").upper(),
+            "{{CAPAS_SUELO}}": descripcion_capas,
+            "{{PROFUNDIDAD}}": profundidad_total,
+        }
+
+    def _replace_placeholders_in_document(
+        self,
+        document: Document,
+        replacements: Dict[str, str],
+        substitute_municipio: Optional[str] = None,
+    ) -> None:
+        """Apply all placeholder replacements throughout the Word document.
+
+        If *substitute_municipio* is provided, every occurrence of the base template's
+        municipality name (SAN PEDRO) in the body text is also replaced so that the
+        document reads as if it were written for the target location.
+        """
+        all_reps = dict(replacements)
+
+        if substitute_municipio:
+            sub_upper = substitute_municipio.strip().upper()
+            base_upper = INFORME_BASE_MUNICIPIO.upper()
+            if _norm(sub_upper) != _norm(base_upper):
+                all_reps[base_upper] = sub_upper
+
+        # Document body (paragraphs + tables, recursively)
+        self._process_body(document, all_reps)
+
+        # Headers and footers
+        for section in document.sections:
+            for paragraph in section.header.paragraphs:
+                self._replace_in_paragraph(paragraph, all_reps)
+            for table in section.header.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        self._process_body(cell, all_reps)
+            for paragraph in section.footer.paragraphs:
+                self._replace_in_paragraph(paragraph, all_reps)
+            for table in section.footer.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        self._process_body(cell, all_reps)
+
     # ── Main generation method ────────────────────────────────────────────────
 
     def generate_informe(
@@ -229,14 +354,24 @@ class WordService:
         fecha_registro,
         municipio_word: Optional[str] = None,
         template_filename: Optional[str] = None,
+        cliente: Optional[str] = None,
+        sondeo: Optional[str] = None,
+        pisos: Optional[int] = None,
+        perforaciones: Optional[List[Dict]] = None,
+        clasificacion_suelo: Optional[str] = None,
     ) -> Tuple[Path, str]:
-        """Copy an informe template, update the header title, return (path, archive_name).
+        """Copy an informe template, fill in data placeholders and update the header.
 
-        Selection logic:
+        Template selection logic:
         - template_filename set  → use that specific Word file as content source
         - municipio_word set     → use its value in the title / output filename
         - Both set               → use template file for content, municipio_word for title
         - Neither set            → base template + title built from proyecto_ubicacion
+
+        When the base template (INFORME BASE SAN PEDRO) is selected and a different
+        municipality is specified, every occurrence of "SAN PEDRO" in the document
+        body is replaced with the target municipality name so the informe reads
+        correctly without a dedicated template file.
         """
         # ── Determine source template ─────────────────────────────────────────
         if template_filename:
@@ -270,13 +405,50 @@ class WordService:
         output_path = self.generated_dir / f"{project_id}_{safe_base}.docx"
         archive_name = f"{safe_base}.docx"
 
-        # ── Copy, patch header, save ──────────────────────────────────────────
+        # ── Copy, fill placeholders, update header, save ──────────────────────
         shutil.copy2(template_path, output_path)
         document = Document(output_path)
+
+        # Build placeholder replacements from all available data
+        replacements = self._build_replacements(
+            proyecto_ubicacion=proyecto_ubicacion,
+            fecha_registro=fecha_registro,
+            municipio_word=municipio_word,
+            cliente=cliente,
+            sondeo=sondeo,
+            pisos=pisos,
+            perforaciones=perforaciones,
+            clasificacion_suelo=clasificacion_suelo,
+        )
+
+        # When using the base template for a different municipality, substitute
+        # the embedded "SAN PEDRO" references with the actual target municipality.
+        using_base = (template_path.name == INFORME_TEMPLATE_FILENAME)
+        substitute = None
+        if using_base and municipio_word and _norm(municipio_word) != _norm(INFORME_BASE_MUNICIPIO):
+            substitute = municipio_word
+
+        self._replace_placeholders_in_document(document, replacements, substitute_municipio=substitute)
+
+        # Header title is set last so it takes precedence over any placeholder replacement
         self._replace_header_text(document, title)
+
         document.save(output_path)
 
-        logger.info("Informe Word generado: %s (fuente: %s)", output_path.name, template_path.name)
+        # Aplicar recursos visuales registrados para documentos Word.
+        # Cuando se declaren imágenes Word en resource_manager, este llamado
+        # las insertará automáticamente sin cambiar este código.
+        try:
+            resource_manager.apply_to_word(output_path, "word_informe")
+        except Exception:
+            logger.debug(
+                "No se pudieron aplicar recursos visuales al informe Word", exc_info=True
+            )
+
+        logger.info(
+            "Informe Word generado: %s (fuente: %s, sustitución municipio: %s)",
+            output_path.name, template_path.name, substitute or "ninguna",
+        )
         return output_path, archive_name
 
 

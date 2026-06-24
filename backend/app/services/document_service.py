@@ -1,23 +1,28 @@
 """Document orchestration service for the Excel templates."""
 
 import logging
-from datetime import datetime
-from uuid import uuid4
-from typing import Dict, List, Optional
-from copy import copy
 import math
+import random
 import re
 import shutil
 import unicodedata
-from urllib.parse import quote
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import copy
+from datetime import date, datetime, timedelta
 from pathlib import Path
-from zipfile import ZIP_DEFLATED, ZipFile
+from typing import Dict, List, Optional
+from urllib.parse import quote
+from uuid import uuid4
+from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
+
 from openpyxl import load_workbook
-from openpyxl.formula.translate import Translator
 from openpyxl.cell.cell import MergedCell
+from openpyxl.formula.translate import Translator
 from openpyxl.styles import Alignment, PatternFill
 
 from app.core.config import settings
+from app.core.constants import get_pisos_config
+from app.utils.common import parse_fecha as _parse_fecha
 from app.services.excel_service import excel_service
 from app.services.word_service import word_service
 from app.services.profile_3d_service import profile_3d_service
@@ -230,8 +235,9 @@ class DocumentService:
                     for column in mirror_columns:
                         worksheet[f"{column}{row_number}"].fill = PatternFill(fill_type=None)
 
-                # Clear L, M, N in entire depth range — only anchor rows will get values
+                # Clear K, L, M, N in entire depth range — only anchor rows will get values
                 for row_number in depth_rows:
+                    _clear_cell_if_writable(worksheet, f"K{row_number}")
                     _clear_cell_if_writable(worksheet, f"L{row_number}")
                     _clear_cell_if_writable(worksheet, f"M{row_number}")
                     _clear_cell_if_writable(worksheet, f"N{row_number}")
@@ -274,6 +280,8 @@ class DocumentService:
                         if column == 'J':
                             i_terms = "+".join([f"I{row_number}" for row_number in range(current_row, row_end + 1)])
                             target_anchor.value = f"=({i_terms})/{span_rows}"
+                        elif column == 'K':
+                            target_anchor.value = 0
                         elif column == 'L':
                             target_anchor.value = 0
                         elif column == 'M':
@@ -291,7 +299,7 @@ class DocumentService:
                     if "15M" in profile_name or "25M" in profile_name:
                         n_anchor = worksheet[f"N{current_row}"]
                         if not isinstance(n_anchor, MergedCell):
-                            n_anchor.value = f"=D{current_row}/K{current_row}"
+                            n_anchor.value = f"=IF(K{current_row}=0,0,D{current_row}/K{current_row})"
                             n_anchor.number_format = "0.000"
                             n_anchor.alignment = Alignment(horizontal="center", vertical="center")
 
@@ -321,6 +329,8 @@ class DocumentService:
                 for row_number in depth_rows:
                     _clear_cell_if_writable(worksheet, f"B{row_number}")
                     _clear_cell_if_writable(worksheet, f"D{row_number}")
+                    _clear_cell_if_writable(worksheet, f"K{row_number}")
+                    _clear_cell_if_writable(worksheet, f"L{row_number}")
                 if "15M" in profile_name or "25M" in profile_name:
                     worksheet["M1"] = "FECHA"
                     worksheet["N1"] = fecha_value
@@ -356,6 +366,7 @@ class DocumentService:
         word_template_filename: Optional[str] = None,
         valores_laboratorio: Optional[Dict] = None,
         valores_laboratorio_por_lab: Optional[Dict[str, Dict]] = None,
+        capacidad_portante: Optional[Dict] = None,
     ) -> Dict:
         """Generate the Excel file from the selected template."""        
         try:
@@ -423,25 +434,9 @@ class DocumentService:
             proyecto_upper = proyecto_ubicacion.upper() if isinstance(proyecto_ubicacion, str) else proyecto_ubicacion
 
             # Calculate fecha_registro + 20 days for cell C7. Support date or ISO string inputs.
-            from datetime import date, timedelta
-
-            fecha_obj = None
-            if isinstance(fecha_registro, date) and not isinstance(fecha_registro, datetime):
-                fecha_obj = fecha_registro
-            elif isinstance(fecha_registro, datetime):
-                fecha_obj = fecha_registro.date()
-            elif isinstance(fecha_registro, str):
-                try:
-                    fecha_obj = datetime.fromisoformat(fecha_registro).date()
-                except Exception:
-                    try:
-                        fecha_obj = date.fromisoformat(fecha_registro)
-                    except Exception:
-                        fecha_obj = None
-
-            fecha_c7 = None
-            if fecha_obj:
-                fecha_c7 = fecha_obj + timedelta(days=20)
+            # Parseo centralizado — fuente única de verdad (common.parse_fecha)
+            fecha_obj = _parse_fecha(fecha_registro)
+            fecha_c7 = (fecha_obj + timedelta(days=20)) if fecha_obj else None
 
             excel_data = {
                 "proyecto_ubicacion": proyecto_upper,
@@ -459,10 +454,14 @@ class DocumentService:
             if requested_templates:
                 # Batch mode: include the capacity template, the correlation template
                 # for the floor range, plus the LABORATORIO set.
+                # constants.get_pisos_config es la fuente única de verdad.
                 capacity_template_id = '8'
-                correlation_template_id = '1' if nPisos <= 3 else '2' if nPisos <= 10 else '3'
-                laboratorio_template_ids = ['4', '5', '6'] if nPisos <= 3 else ['4', '5', '6', '7']
-                batch_templates = [capacity_template_id, correlation_template_id, *laboratorio_template_ids, '9']
+                _pisos_cfg = get_pisos_config(nPisos)
+                correlation_template_id = _pisos_cfg["template_id"]
+                laboratorio_template_ids = ['4', '5', '6', '7'] if nPisos > 3 else ['4', '5', '6']
+                # Template '9' (INCONFINADO) se mueve a Fase 3 para eliminar
+                # la condición de carrera con template '4' (lab_state).
+                batch_templates = [capacity_template_id, correlation_template_id, *laboratorio_template_ids]
                 client_slug = self._slugify_filename(str(cliente or '').strip(), 'cliente')[:30]
                 project_slug = self._slugify_filename(proyecto_upper, 'proyecto')[:30]
                 municipio_slug = self._slugify_filename(str(municipio_word or '').strip(), '')[:20] if municipio_word else ''
@@ -472,8 +471,11 @@ class DocumentService:
                 output_files = []
                 perfil_added = False
                 perfil_error = None
-                perfil_generated_file = None
                 asentamientos_template_ids = ['10', '11']
+                asentamientos_template_names = {
+                    '10': 'ASENTAMIENTOS ZAPATAS 300.xlsx',
+                    '11': 'ASENTAMIENTOS ZAPATAS 800.xlsx',
+                }
                 p_template_entries = [
                     ('12', 'P-1.xls', 'P-1'),
                     ('13', 'P-2.xls', 'P-2'),
@@ -483,165 +485,330 @@ class DocumentService:
                     p_template_entries.append(('15', 'P-4.xls', 'P-4'))
 
                 # List of all template ids included in the ZIP (for metadata)
-                batch_templates_with_asentamientos = list(batch_templates) + list(asentamientos_template_ids) + [str(tpl_id) for tpl_id, _, _ in p_template_entries]
+                # '9' se incluye en el listado de IDs aunque corra en Fase 3
+                batch_templates_with_asentamientos = (
+                    list(batch_templates) + ['9'] + list(asentamientos_template_ids)
+                    + [str(tpl_id) for tpl_id, _, _ in p_template_entries]
+                )
+
+                # Archive names for batch templates — built once, reused across phases
+                _archive_name_map = {
+                    '1': 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx',
+                    '2': 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx',
+                    '3': 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx',
+                    '4': 'LABORATORIO - FORMULAS 1.xlsx',
+                    '5': 'LABORATORIO - FORMULAS 2.xlsx',
+                    '6': 'LABORATORIO - FORMULAS 3.xlsx',
+                    '7': 'LABORATORIO - FORMULAS 4.xlsx',
+                }
+
+                def _batch_archive_name(tpl_id: str, generated_file: Path) -> str:
+                    if tpl_id == str(capacity_template_id):
+                        return settings.TEMPLATES_CONFIG.get(tpl_id, generated_file.name)
+                    return _archive_name_map.get(
+                        tpl_id,
+                        settings.TEMPLATES_CONFIG.get(tpl_id, generated_file.name),
+                    )
+
+                def _cls_vl(tpl_id: str):
+                    cls = (clasificaciones_por_lab or {}).get(tpl_id) or clasificacion_suelo
+                    vl = (valores_laboratorio_por_lab or {}).get(tpl_id) or valores_laboratorio
+                    return cls, vl
+
+                def _gen_batch_excel(tpl_id: str) -> tuple:
+                    cls, vl = _cls_vl(tpl_id)
+                    f = self.excel_service.generate_excel(
+                        template_id=tpl_id,
+                        project_id=project_id,
+                        data=excel_data,
+                        perforaciones=default_perforaciones,
+                        parametros=parametros or [],
+                        clasificacion_suelo=cls,
+                        valores_laboratorio=vl,
+                        capacidad_portante=capacidad_portante if tpl_id == '8' else None,
+                    )
+                    return tpl_id, f
+
+                def _gen_asentamiento(tpl_id: str) -> tuple:
+                    f = self.excel_service.generate_excel(
+                        template_id=tpl_id,
+                        project_id=project_id,
+                        data=excel_data,
+                        perforaciones=default_perforaciones,
+                        parametros=parametros or [],
+                        capacidad_portante=capacidad_portante,
+                    )
+                    return tpl_id, f
+
+                # Scan images dir once so each P template doesn't repeat the glob
+                _all_images: list = []
+                if images_dir and images_dir.exists():
+                    try:
+                        _all_images = [
+                            f for f in images_dir.iterdir()
+                            if f.is_file() and f.suffix.lower() in {'.jpg', '.jpeg', '.png'}
+                        ]
+                    except Exception:
+                        pass
+
+                def _gen_p_template(tpl_id: str, pt_archive: str, pt_sondeo: str) -> tuple:
+                    excel_data_pt = dict(excel_data, sondeo=pt_sondeo)
+                    _prefix = f"{pt_sondeo} M-".upper()
+                    _p_photos = sorted(
+                        [f for f in _all_images if f.name.upper().startswith(_prefix)],
+                        key=lambda p: p.name,
+                    )
+                    f = self.excel_service.generate_excel(
+                        template_id=tpl_id,
+                        project_id=project_id,
+                        data=excel_data_pt,
+                        perforaciones=default_perforaciones,
+                        parametros=parametros or [],
+                        photo_paths=_p_photos if _p_photos else None,
+                    )
+                    return tpl_id, pt_archive, f
+
+                # zip_entries collects (file_path, archive_name, compress_type) in order
+                zip_entries: list = []
 
                 # Pre-seed lab state so template '8' (CAPACIDAD PORTANTE) can read
                 # n_golpes even though it runs before the LABORATORIO templates.
                 # Template '4' will overwrite this with its actual K14 value later.
-                import random as _rnd_pre
-                _pre_n = _rnd_pre.choice([14, 15, 16])
+                _pre_n = random.choice([14, 15, 16])
                 self.excel_service._save_lab_state({'n_golpes': _pre_n, 'lp': 22})
 
-                with ZipFile(zip_path, 'w', compression=ZIP_DEFLATED) as zip_file:
-                    for current_template in batch_templates:
-                        if clasificaciones_por_lab and str(current_template) in clasificaciones_por_lab:
-                            cls_for_template = clasificaciones_por_lab[str(current_template)] or None
-                        else:
-                            cls_for_template = clasificacion_suelo
-                        if valores_laboratorio_por_lab and str(current_template) in valores_laboratorio_por_lab:
-                            vl_for_template = valores_laboratorio_por_lab[str(current_template)] or None
-                        else:
-                            vl_for_template = valores_laboratorio
-                        generated_file = self.excel_service.generate_excel(
-                            template_id=current_template,
-                            project_id=project_id,
-                            data=excel_data,
-                            perforaciones=default_perforaciones,
-                            parametros=parametros or [],
-                            clasificacion_suelo=cls_for_template,
-                            valores_laboratorio=vl_for_template,
-                        )
-                        output_files.append(generated_file)
+                # ── PHASE 1: Template '8' (sequential) ───────────────────────────
+                # Must run before '4' overwrites lab_state.
+                _t8_id, _t8_file = _gen_batch_excel('8')
+                output_files.append(_t8_file)
+                zip_entries.append((
+                    _t8_file,
+                    self._sanitize_archive_name(_batch_archive_name('8', _t8_file)),
+                    ZIP_STORED,
+                ))
 
-                        # Map known templates to friendly names inside the ZIP
-                        archive_name_map = {
-                            '1': 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx',
-                            '2': 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx',
-                            '3': 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.xlsx',
-                            '4': 'LABORATORIO - FORMULAS 1.xlsx',
-                            '5': 'LABORATORIO - FORMULAS 2.xlsx',
-                            '6': 'LABORATORIO - FORMULAS 3.xlsx',
-                            '7': 'LABORATORIO - FORMULAS 4.xlsx',
-                        }
+                # ── PHASE 2: Remaining batch templates in parallel ────────────────
+                # ('1/2/3', '4', '5', '6', '7') — independent of each other.
+                # '4' guarda lab_state; '1/2/3' guardan SPT state.
+                # '9' (INCONFINADO) corre en Fase 3 para leer lab_state correcto.
+                remaining_batch = [t for t in batch_templates if t != '8']
+                phase2_results: dict = {}
+                _p2_workers = min(len(remaining_batch), 4)
+                with ThreadPoolExecutor(max_workers=_p2_workers) as _ex2:
+                    _p2_futures = {_ex2.submit(_gen_batch_excel, t): t for t in remaining_batch}
+                    for _fut in as_completed(_p2_futures):
+                        _tid, _fpath = _fut.result()
+                        phase2_results[_tid] = _fpath
 
-                        # The capacity workbook should keep its real filename inside the ZIP.
-                        if str(current_template) == str(capacity_template_id):
-                            archive_name = settings.TEMPLATES_CONFIG.get(str(current_template), generated_file.name)
-                        else:
-                            archive_name = archive_name_map.get(
-                                str(current_template),
-                                settings.TEMPLATES_CONFIG.get(str(current_template), generated_file.name),
-                            )
+                for t in remaining_batch:
+                    f = phase2_results[t]
+                    output_files.append(f)
+                    zip_entries.append((
+                        f,
+                        self._sanitize_archive_name(_batch_archive_name(t, f)),
+                        ZIP_STORED,
+                    ))
 
-                        archive_name_safe = self._sanitize_archive_name(archive_name)
-                        zip_file.write(generated_file, arcname=archive_name_safe)
+                # ── PHASE 3: All remaining documents in parallel ──────────────────
+                # lab_state written by '4' and SPT state written by '1/2/3' are now stable.
+                # Asentamientos ('10','11'), P templates, PERFIL SUELO, SVG 3D, Word.
 
-                    asentamientos_template_names = {
-                        '10': 'ASENTAMIENTOS ZAPATAS 300.xlsx',
-                        '11': 'ASENTAMIENTOS ZAPATAS 800.xlsx',
-                    }
-                    for current_template in asentamientos_template_ids:
-                        generated_file = self.excel_service.generate_excel(
-                            template_id=current_template,
-                            project_id=project_id,
-                            data=excel_data,
-                            perforaciones=default_perforaciones,
-                            parametros=parametros or [],
-                        )
-                        output_files.append(generated_file)
-                        arcname = asentamientos_template_names[current_template]
-                        zip_file.write(generated_file, arcname=self._sanitize_archive_name(arcname))
+                # Nombre del PERFIL DEL SUELO derivado de constants.get_pisos_config
+                _perfil_excel_name = _pisos_cfg["perfil_name"]
+                _perfil_template = self.excel_service.templates_dir / _perfil_excel_name
+                svg_3d_filename = f"{project_id}_PERFIL_3D.svg"
+                svg_3d_path = self.excel_service.generated_dir / svg_3d_filename
 
-                    for current_template, archive_name, sondeo_label in p_template_entries:
-                        excel_data_for_template = dict(excel_data)
-                        excel_data_for_template['sondeo'] = sondeo_label
-
-                        # Find field photos for this sondeo: files named "P-X M-  (N).jpg"
-                        _p_photos: list = []
-                        if images_dir and images_dir.exists():
-                            _prefix = f"{sondeo_label} M-".upper()
-                            _p_photos = sorted(
-                                [
-                                    f for f in images_dir.iterdir()
-                                    if f.is_file()
-                                    and f.suffix.lower() in {'.jpg', '.jpeg', '.png'}
-                                    and f.name.upper().startswith(_prefix)
-                                ],
-                                key=lambda p: p.name,
-                            )
-
-                        generated_file = self.excel_service.generate_excel(
-                            template_id=current_template,
-                            project_id=project_id,
-                            data=excel_data_for_template,
-                            perforaciones=default_perforaciones,
-                            parametros=parametros or [],
-                            photo_paths=_p_photos if _p_photos else None,
-                        )
-                        output_files.append(generated_file)
-                        zip_file.write(generated_file, arcname=self._sanitize_archive_name(archive_name))
-
-                    # Generate PERFIL DEL SUELO Excel and add to ZIP
-                    _perfil_excel_name = (
-                        "PERFIL DEL SUELO 6M.xlsx" if nPisos <= 3
-                        else "PERFIL DEL SUELO 15M.xlsx" if nPisos <= 10
-                        else "PERFIL DEL SUELO 25M.xlsx"
+                def _gen_perfil_excel():
+                    return self._prepare_profile_file(
+                        source_template=_perfil_template,
+                        project_id=project_id,
+                        project_value=proyecto_upper,
+                        fecha_value=excel_data.get("fecha_registro_original"),
+                        fecha_original=excel_data.get("fecha_registro_original"),
+                        perforaciones=default_perforaciones,
                     )
-                    _perfil_template = self.excel_service.templates_dir / _perfil_excel_name
-                    if _perfil_template.exists():
-                        try:
-                            _perfil_excel_path = self._prepare_profile_file(
-                                source_template=_perfil_template,
-                                project_id=project_id,
-                                project_value=proyecto_upper,
-                                fecha_value=excel_data.get("fecha_registro_original"),
-                                fecha_original=excel_data.get("fecha_registro_original"),
-                                perforaciones=default_perforaciones,
-                            )
-                            output_files.append(_perfil_excel_path)
-                            zip_file.write(_perfil_excel_path, arcname=_perfil_excel_name)
-                        except Exception:
-                            logger.warning("No se pudo generar el PERFIL DEL SUELO Excel", exc_info=True)
-                    else:
-                        logger.warning("Plantilla no encontrada: %s", _perfil_template)
 
-                    # Perfil estratigráfico 3D (único — el 2D no se incluye)
-                    try:
-                        svg_3d_filename = f"{project_id}_PERFIL_3D.svg"
-                        svg_3d_path = self.excel_service.generated_dir / svg_3d_filename
-                        profile_3d_service.save_profile_3d(
-                            perforaciones=default_perforaciones,
-                            output_path=svg_3d_path,
-                            project_name=proyecto_upper,
-                            sondeo=sondeo or "P-1",
-                            fecha=excel_data.get("fecha_registro_original"),
-                        )
-                        output_files.append(svg_3d_path)
-                        zip_file.write(svg_3d_path, arcname="PERFIL ESTRATIGRAFICO 3D.svg")
-                        perfil_added = True
-                    except Exception:
-                        perfil_error = "No se pudo generar el perfil estratigráfico 3D"
-                        logger.warning(perfil_error, exc_info=True)
+                def _gen_svg_3d():
+                    profile_3d_service.save_profile_3d(
+                        perforaciones=default_perforaciones,
+                        output_path=svg_3d_path,
+                        project_name=proyecto_upper,
+                        sondeo=sondeo or "P-1",
+                        fecha=excel_data.get("fecha_registro_original"),
+                        pisos=nPisos,
+                    )
 
-                    informe_file, informe_archive_name = word_service.generate_informe(
+                def _gen_word():
+                    return word_service.generate_informe(
                         project_id=project_id,
                         proyecto_ubicacion=proyecto_upper,
                         fecha_registro=excel_data.get("fecha_registro_original") or fecha_registro,
                         municipio_word=municipio_word or None,
                         template_filename=word_template_filename or None,
+                        cliente=cliente,
+                        sondeo=sondeo,
+                        pisos=nPisos,
+                        perforaciones=default_perforaciones,
+                        clasificacion_suelo=clasificacion_suelo,
                     )
-                    output_files.append(informe_file)
-                    zip_file.write(
-                        informe_file,
-                        arcname=self._sanitize_archive_name(informe_archive_name),
+
+                def _gen_inconfinado():
+                    # Template '9' corre en Fase 3 (después de Fase 2) para que
+                    # lab_state escrito por template '4' esté disponible sin
+                    # condición de carrera.
+                    cls, vl = _cls_vl('9')
+                    return '9', self.excel_service.generate_excel(
+                        template_id='9',
+                        project_id=project_id,
+                        data=excel_data,
+                        perforaciones=default_perforaciones,
+                        parametros=parametros or [],
+                        clasificacion_suelo=cls,
+                        valores_laboratorio=vl,
                     )
+
+                # Phase 3 results keyed by (type, id)
+                _p3_asentamientos: dict = {}
+                _p3_p_templates: dict = {}
+                _p3_perfil_excel = None
+                _p3_word_result = None
+                _p3_svg_ok = False
+                _p3_inconfinado_file = None
+
+                # P templates run sequentially in a single thread to avoid
+                # concurrent Excel.exe processes saving to the same directory
+                # (Excel creates ~$ temp files that conflict across instances).
+                def _gen_p_templates_sequential() -> dict:
+                    results = {}
+                    for _pt_id, _pt_arch, _pt_son in p_template_entries:
+                        _tid, _tarch, _tfile = _gen_p_template(_pt_id, _pt_arch, _pt_son)
+                        results[_tid] = (_tarch, _tfile)
+                    return results
+
+                _p3_workers = min(
+                    len(asentamientos_template_ids) + 5,  # asentamientos + p_seq + perfil + svg + word + inconfinado
+                    8,
+                )
+                with ThreadPoolExecutor(max_workers=_p3_workers) as _ex3:
+                    # Asentamientos
+                    _asen_futures = {
+                        _ex3.submit(_gen_asentamiento, at): at
+                        for at in asentamientos_template_ids
+                    }
+                    # P templates — one thread, sequential inside to avoid Excel temp-file conflicts
+                    _p_seq_fut = _ex3.submit(_gen_p_templates_sequential)
+                    # PERFIL DEL SUELO Excel
+                    _perfil_fut = _ex3.submit(_gen_perfil_excel) if _perfil_template.exists() else None
+                    # SVG 3D
+                    _svg_fut = _ex3.submit(_gen_svg_3d)
+                    # Word
+                    _word_fut = _ex3.submit(_gen_word)
+                    # INCONFINADO — Fase 3 para leer lab_state correcto de template '4'
+                    _inc_fut = _ex3.submit(_gen_inconfinado)
+
+                    # Collect asentamientos
+                    for _fut in as_completed(_asen_futures):
+                        _at_id, _at_file = _fut.result()
+                        _p3_asentamientos[_at_id] = _at_file
+
+                    # Collect P templates (all results from sequential runner)
+                    _p3_p_templates = _p_seq_fut.result()
+
+                    # Collect PERFIL DEL SUELO Excel
+                    if _perfil_fut is not None:
+                        try:
+                            _p3_perfil_excel = _perfil_fut.result()
+                        except Exception:
+                            logger.warning("No se pudo generar el PERFIL DEL SUELO Excel", exc_info=True)
+                    else:
+                        logger.warning("Plantilla no encontrada: %s", _perfil_template)
+
+                    # Collect SVG 3D
+                    try:
+                        _svg_fut.result()
+                        _p3_svg_ok = True
+                    except Exception:
+                        perfil_error = "No se pudo generar el perfil estratigráfico 3D"
+                        logger.warning(perfil_error, exc_info=True)
+
+                    # Collect Word
+                    try:
+                        _p3_word_result = _word_fut.result()
+                    except Exception:
+                        logger.warning("No se pudo generar el informe Word", exc_info=True)
+
+                    # Collect INCONFINADO
+                    try:
+                        _, _p3_inconfinado_file = _inc_fut.result()
+                    except Exception:
+                        logger.warning("No se pudo generar INCONFINADO", exc_info=True)
+
+                # Add phase 3 results to zip_entries in original order
+
+                # INCONFINADO
+                if _p3_inconfinado_file is not None:
+                    output_files.append(_p3_inconfinado_file)
+                    zip_entries.append((
+                        _p3_inconfinado_file,
+                        self._sanitize_archive_name(
+                            settings.TEMPLATES_CONFIG.get('9', _p3_inconfinado_file.name)
+                        ),
+                        ZIP_STORED,
+                    ))
+
+                for at in asentamientos_template_ids:
+                    _at_f = _p3_asentamientos[at]
+                    output_files.append(_at_f)
+                    zip_entries.append((
+                        _at_f,
+                        self._sanitize_archive_name(asentamientos_template_names[at]),
+                        ZIP_STORED,
+                    ))
+
+                for pt_id, pt_archive, _ in p_template_entries:
+                    _pt_arch, _pt_f = _p3_p_templates[pt_id]
+                    output_files.append(_pt_f)
+                    zip_entries.append((
+                        _pt_f,
+                        self._sanitize_archive_name(pt_archive),
+                        ZIP_STORED,
+                    ))
+
+                if _p3_perfil_excel is not None:
+                    output_files.append(_p3_perfil_excel)
+                    zip_entries.append((_p3_perfil_excel, _perfil_excel_name, ZIP_STORED))
+
+                if _p3_svg_ok:
+                    output_files.append(svg_3d_path)
+                    zip_entries.append((svg_3d_path, "PERFIL ESTRATIGRAFICO 3D.svg", ZIP_DEFLATED))
+                    # Incluir PNG junto al SVG (para pegar en Word directamente)
+                    png_3d_path = svg_3d_path.with_suffix(".png")
+                    if png_3d_path.exists():
+                        output_files.append(png_3d_path)
+                        zip_entries.append((png_3d_path, "PERFIL ESTRATIGRAFICO 3D.png", ZIP_DEFLATED))
+                    perfil_added = True
+
+                if _p3_word_result is not None:
+                    _inf_file, _inf_archive = _p3_word_result
+                    output_files.append(_inf_file)
+                    zip_entries.append((
+                        _inf_file,
+                        self._sanitize_archive_name(_inf_archive),
+                        ZIP_STORED,
+                    ))
+
+                # ── Write ZIP once with all collected files ───────────────────────
+                with ZipFile(zip_path, 'w') as zip_file:
+                    for _zf_path, _zf_name, _zf_compress in zip_entries:
+                        zip_file.write(_zf_path, arcname=_zf_name, compress_type=_zf_compress)
 
                     # Include uploaded images in a subfolder inside the ZIP if present
                     try:
                         if images_dir and images_dir.exists():
                             for img in sorted(images_dir.iterdir()):
                                 if img.is_file():
-                                    zip_file.write(img, arcname=f"imagenes/{img.name}")
+                                    zip_file.write(img, arcname=f"imagenes/{img.name}", compress_type=ZIP_STORED)
                                     output_files.append(img)
                     except Exception:
                         logger.debug("No se pudieron agregar imágenes al ZIP", exc_info=True)

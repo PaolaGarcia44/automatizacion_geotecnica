@@ -18,7 +18,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   }
 
   return (
-    <div className='flex h-screen bg-secondary-50'>
+    <div className='flex h-screen bg-secondary-50 dark:bg-secondary-900'>
       {/* Sidebar */}
       <Sidebar />
 

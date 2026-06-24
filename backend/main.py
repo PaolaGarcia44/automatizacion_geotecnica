@@ -80,6 +80,16 @@ async def root():
     }
 
 
+@app.get("/health", tags=["health"])
+async def health_check():
+    """Health check para que Electron sepa que el backend está listo"""
+    return {
+        "status": "ok",
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+    }
+
+
 # Manejo de excepciones global
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):

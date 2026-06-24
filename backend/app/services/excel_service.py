@@ -2,26 +2,29 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import random
 import re
 import shutil
 import unicodedata
-from datetime import date, datetime
 from copy import copy
+from datetime import date, datetime
 from pathlib import Path
-from typing import List, Optional
 from tempfile import NamedTemporaryFile
+from typing import List, Optional
 from xml.etree import ElementTree as ET
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
- 
 import openpyxl
 from openpyxl import load_workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils.cell import column_index_from_string, coordinate_from_string
 
 from app.core.config import settings
+from app.core.constants import COLOR_MAP as _COLOR_MAP, get_pisos_config, get_spt_values
+from app.services.resource_manager import resource_manager
+from app.utils.common import normalize as _common_normalize, split_project_location as _common_split_location
 from app.utils.field_mapping import (
     get_field_mapping,
     get_parametros_mapping,
@@ -34,6 +37,11 @@ MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 XML_NS = "http://www.w3.org/XML/1998/namespace"
 NS = {"main": MAIN_NS, "rel": REL_NS}
+
+# Pre-compiled regex for AlternateContent removal — avoids recompilation on every call
+_RE_ALTERNATE_CONTENT = re.compile(
+    r'<\/?(?:\w+:)?AlternateContent[^>]*>(?:.|\n|\r)*?<\/?(?:\w+:)?AlternateContent>'
+)
 
 
 class ExcelService:
@@ -66,49 +74,23 @@ class ExcelService:
         return output_path
 
     def _calculate_spt_values(self, template_id: str, use_lower: bool, pisos_int: int = 0) -> List[str]:
-        """Calculate SPT values based on building floors and toggle.
+        """Devuelve los valores SPT para la plantilla y el toggle indicados.
 
-        Args:
-            template_id: Template ID to get SPT values for
-            use_lower: Selects Option 1 (True) or Option 2 (False) within the type
-            pisos_int: Number of building floors — determines sequence length and values
-
-        Returns:
-            List of SPT values as strings:
-              ≤3 pisos  → 7 values,  ≤10 pisos → 16 values,  >10 pisos → 25 values
+        Delega a constants.get_spt_values — fuente única de verdad para las
+        secuencias SPT.  El parámetro pisos_int se conserva por compatibilidad
+        pero ya no se usa: el template_id (o su equivalente de correlación) es
+        el único indicador del rango de pisos.
         """
-        template_mapping = {
-            '12': '1',
-            '13': '2',
-            '14': '3',
-            '15': '3',
-        }
-        effective_template_id = template_mapping.get(str(template_id), str(template_id))
-
-        if effective_template_id in ("1", "2", "3"):
-            # Pisos-aware sequences — same rules for P-1 / P-2 / P-3 / P-4
-            # use_lower=True → Option 1,  use_lower=False → Option 2
-            if pisos_int <= 3:
-                opt1 = [6, 7, 14, 18, 22, 26, 28]
-                opt2 = [7, 8, 15, 19, 23, 26, 29]
-            elif pisos_int <= 10:
-                opt1 = [14, 19, 21, 28, 34, 37, 41, 44, 47, 50, 53, 56, 58, 61, 64, 67]
-                opt2 = [15, 20, 22, 29, 35, 38, 42, 45, 48, 51, 54, 57, 59, 62, 65, 68]
-            else:
-                base1 = [12, 16, 27, 34, 39, 45, 44, 48, 49, 52, 54, 57, 59, 62, 64]
-                base2 = [13, 17, 28, 35, 40, 46, 45, 49, 50, 53, 55, 58, 60, 63, 65]
-                opt1 = base1 + [64] * (25 - len(base1))
-                opt2 = base2 + [65] * (25 - len(base2))
-            spt_values = opt1 if use_lower else opt2
-            return [str(v) for v in spt_values]
-
+        _template_mapping = {"12": "1", "13": "2", "14": "3", "15": "3"}
+        effective = _template_mapping.get(str(template_id), str(template_id))
+        if effective in ("1", "2", "3"):
+            return get_spt_values(effective, use_lower)
         return []
 
     def _save_spt_state(self, effective_template_id: str, values: List[str]) -> None:
         """Persist SPT values so a paired legacy template can reuse them exactly."""
         try:
-            import json
-            state_file = Path(self.generated_dir) / f".spt_state_{effective_template_id}.json"
+            state_file = self.generated_dir / f".spt_state_{effective_template_id}.json"
             state_file.write_text(json.dumps(values))
         except Exception:
             logger.debug("No se pudieron guardar los valores SPT para template %s", effective_template_id, exc_info=True)
@@ -116,8 +98,7 @@ class ExcelService:
     def _load_spt_state(self, effective_template_id: str) -> Optional[List[str]]:
         """Read previously persisted SPT values for a given template."""
         try:
-            import json
-            state_file = Path(self.generated_dir) / f".spt_state_{effective_template_id}.json"
+            state_file = self.generated_dir / f".spt_state_{effective_template_id}.json"
             if state_file.exists():
                 return json.loads(state_file.read_text())
         except Exception:
@@ -127,8 +108,7 @@ class ExcelService:
     def _save_lab_state(self, state: dict) -> None:
         """Persist lab data (n_golpes, lp) so INCONFINADO and ASENTAMIENTOS can reuse it."""
         try:
-            import json
-            state_file = Path(self.generated_dir) / ".lab_state.json"
+            state_file = self.generated_dir / ".lab_state.json"
             state_file.write_text(json.dumps(state))
         except Exception:
             logger.debug("No se pudo guardar el estado de laboratorio", exc_info=True)
@@ -136,8 +116,7 @@ class ExcelService:
     def _load_lab_state(self) -> Optional[dict]:
         """Read previously persisted lab state."""
         try:
-            import json
-            state_file = Path(self.generated_dir) / ".lab_state.json"
+            state_file = self.generated_dir / ".lab_state.json"
             if state_file.exists():
                 return json.loads(state_file.read_text())
         except Exception:
@@ -145,38 +124,26 @@ class ExcelService:
         return None
 
     def _get_legacy_n_campo_values(self, template_id: str, use_lower: bool, pisos_int: int = 0) -> List[tuple]:
-        """Get N° CAMPO values for legacy .xls templates.
+        """Devuelve los valores N° CAMPO para las plantillas .xls heredadas (P-1…P-4).
 
-        All four P files (P-1 through P-4) mirror the CORRELACION GEOTÉCNICA that
-        was generated in the same request so their T column matches column F of that file.
-        The CORRELACION template used depends on the pisos range:
-          pisos ≤ 3  → template '1' (plantilla_1.xlsx)
-          pisos ≤ 10 → template '2' (plantilla_2.xlsx)
-          pisos > 10 → template '3' (plantilla_3.xlsx)
+        Todos los archivos P reflejan la CORRELACIÓN GEOTÉCNICA generada en la
+        misma solicitud, de modo que su columna T coincide con la columna F de
+        dicha plantilla.  La clave de correlación y el conteo esperado se
+        obtienen de constants.get_pisos_config — fuente única de verdad.
         """
-        # Determine which CORRELACION template was generated for this pisos range
-        # and the expected value count for that range.
-        if pisos_int <= 3:
-            correlation_key = '1'
-            expected_count = 7
-        elif pisos_int <= 10:
-            correlation_key = '2'
-            expected_count = 16
-        else:
-            correlation_key = '3'
-            expected_count = 25
+        cfg = get_pisos_config(pisos_int)
+        correlation_key = cfg["template_id"]
+        expected_count = cfg["spt_count"]
 
-        # Load the state saved by the CORRELACION template in this same request.
-        # Reject states with the wrong count (stale from a different pisos run).
+        # Reutilizar los valores guardados por la plantilla de correlación en
+        # esta misma solicitud.  Rechazar estados con conteo incorrecto (stale).
         saved = self._load_spt_state(correlation_key)
         if saved and len(saved) == expected_count:
             return [(v, "General") for v in saved]
 
-        # Fallback: compute fresh using opt1 (use_lower=True) so all four P files
-        # stay consistent when no saved state is available.
+        # Fallback: calcular desde constants usando opt1 para coherencia.
         try:
-            spt_values = self._calculate_spt_values(correlation_key, True, pisos_int)
-            return [(v, "General") for v in spt_values]
+            return [(v, "General") for v in get_spt_values(correlation_key, True)]
         except Exception:
             logger.debug("No se pudieron calcular los valores de N° CAMPO para template %s", template_id, exc_info=True)
             return []
@@ -581,43 +548,18 @@ class ExcelService:
                 letters += character
         return int(digits or 0), column_index_from_string(letters or "A")
 
-    # Shared color map used by both openpyxl (.xlsx) and win32com (.xls) paths.
-    _COLOR_MAP = {
-        "beige": "F5F0D7", "beis": "F5F0D7",
-        "café": "8B5A2B", "cafe": "8B5A2B",
-        "amarillo": "FFD966", "rojizo": "C0504D",
-        "blanco": "FFFFFF", "gris claro": "D9D9D9",
-        "naranja": "F4B183", "verde": "92D050", "verde claro": "C6E0B4",
-        "café oscuro": "5C3D2E", "café claro": "A0826D",
-        "café rojizo": "9B6B4A", "marrón": "8B4513",
-        "marrón claro": "A0826D", "marrón oscuro": "5C3D2E",
-        "marrón rojizo": "9B6B4A",
-        "amarillo claro": "FFEB3B", "amarillo oscuro": "D4A520",
-        "amarillo café": "9B8C00",
-        "rojo": "FF0000", "rojo oscuro": "8B0000",
-        "blanco sucio": "E8E8E8",
-        "gris": "808080", "gris oscuro": "505050",
-        "gris azuloso": "708090", "gris amarillento": "A9A9A9",
-        "naranja claro": "FFD700", "naranja oscuro": "FF8C00",
-        "verde oscuro": "008000",
-        "negro": "000000", "negro verdoso": "1B4D3E",
-        "rosa": "FFC0CB",
-        "púrpura": "800080", "violeta": "EE82EE",
-        "azul": "0000FF", "azul claro": "ADD8E6", "azul oscuro": "00008B",
-        "turquesa": "40E0D0", "cian": "00FFFF",
-        "crema": "FFFDD0", "mostaza": "FFDB58", "ocre": "CC7000",
-        "siena": "A0522D", "tostado": "D2B48C", "leonado": "DAA520",
-        "grisáceo": "A9A9A9", "pardusco": "8B7355",
-        "oscuro": "505050", "claro": "E8E8E8",
-    }
+    # Mapa de colores importado desde constants.py — fuente única de verdad.
+    # Claves pre-normalizadas (sin tildes, minúsculas).  Usado por las rutas
+    # openpyxl (.xlsx) y win32com (.xls).  NO redefinir aquí.
 
     def _get_color_info(self, color_name: Optional[str]) -> tuple:
-        """Return (fill_hex_RRGGBB, font_hex_RRGGBB) for a color name."""
-        normalized = self._normalize(color_name or "")
-        fill_hex = next(
-            (v for k, v in self._COLOR_MAP.items() if self._normalize(k) == normalized),
-            "F4B183",
-        )
+        """Devuelve (fill_hex_RRGGBB, font_hex_RRGGBB) para un nombre de color.
+
+        Usa _COLOR_MAP (constants.py) con claves pre-normalizadas y búsqueda
+        directa O(1) mediante _common_normalize — fuente única de verdad.
+        """
+        normalized = _common_normalize(color_name or "")
+        fill_hex = _COLOR_MAP.get(normalized, "F4B183")
         try:
             r = int(fill_hex[0:2], 16)
             g = int(fill_hex[2:4], 16)
@@ -968,25 +910,15 @@ class ExcelService:
                     if info.filename == 'xl/workbook.xml':
                         try:
                             wb_root = ET.fromstring(data)
-                            mc_ns = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
-                            # remove all mc:AlternateContent elements
-                            for ac in wb_root.findall('.//{'+mc_ns+'}AlternateContent'):
-                                parent = wb_root
-                                # find parent by searching for the element and removing it from its parent
-                                # since ElementTree doesn't provide parent pointers, rebuild without AlternateContent
-                            # Safer approach: serialize to string and remove AlternateContent segments by tag
                             s = ET.tostring(wb_root, encoding='utf-8')
                             try:
                                 s_dec = s.decode('utf-8')
-                                # naive removal: remove '<mc:AlternateContent' blocks
-                                import re
-                                s_clean = re.sub(r'<\/?(?:\w+:)?AlternateContent[^>]*>(?:.|\n|\r)*?<\/?(?:\w+:)?AlternateContent>', '', s_dec)
+                                s_clean = _RE_ALTERNATE_CONTENT.sub('', s_dec)
                                 data = s_clean.encode('utf-8')
                             except Exception:
                                 pass
                         except Exception:
-                            # if parsing fails, fall back to original data
-                            data = data
+                            pass
                     if info.filename in sheet_updates:
                         replacement = sheet_updates[info.filename]
                         if isinstance(replacement, (bytes, bytearray)):
@@ -1010,67 +942,6 @@ class ExcelService:
                 except Exception:
                     pass
 
-    def _extract_first_image_anchor(self, template_path: Path) -> Optional[tuple]:
-        return None
-
-    def _insert_image_plantilla(self, work_file: Path) -> None:
-        """Replace the placeholder image in the generated Excel with Imagen1.jpg.
-
-        The template already contains a drawing anchored at T1 (column T).
-        This method replaces only the image bytes in xl/media/image1.JPG so the
-        position, size, and all drawing XML remain untouched.
-        """
-        from app.core.config import settings as _settings
-        img_source = _settings.TEMPLATES_DIR / 'imagenes' / 'Imagen1.jpg'
-        if not img_source.exists():
-            logger.error(
-                "Imagen no encontrada para inserción en columna T: %s", img_source
-            )
-            return
-
-        img_bytes = img_source.read_bytes()
-
-        with ZipFile(work_file, 'r') as src:
-            entries = [(info, src.read(info.filename)) for info in src.infolist()]
-
-        # Find the existing media image entry (case-insensitive) and replace its bytes
-        replaced = False
-        updated_entries = []
-        for info, data in entries:
-            if info.filename.lower() == 'xl/media/image1.jpg':
-                updated_entries.append((info, img_bytes))
-                replaced = True
-            else:
-                updated_entries.append((info, data))
-
-        if not replaced:
-            logger.warning(
-                "No se encontró imagen existente (xl/media/image1.JPG) en %s; "
-                "se omite la inserción de Imagen1.jpg",
-                work_file,
-            )
-            return
-
-        with NamedTemporaryFile(delete=False, suffix='.xlsx') as tf:
-            temp_path = Path(tf.name)
-        try:
-            with ZipFile(temp_path, 'w', compression=ZIP_DEFLATED) as zf:
-                for info, data in updated_entries:
-                    zf.writestr(info, data)
-            if work_file.exists():
-                work_file.unlink()
-            shutil.move(str(temp_path), str(work_file))
-            logger.info(
-                "Imagen insertada en columna T (anclaje T1, hoja P3): %s", work_file
-            )
-        finally:
-            if temp_path.exists():
-                try:
-                    temp_path.unlink()
-                except Exception:
-                    pass
-
-
     def _fill_general_fields(self, worksheet, template_id: str, data: dict):
         field_mapping = get_field_mapping(template_id)
         for field_name, cell_refs in field_mapping.items():
@@ -1092,27 +963,9 @@ class ExcelService:
         except Exception:
             return str(value)
 
-    def _split_project_location(self, value: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-        if value is None:
-            return None, None
-        try:
-            text = str(value).strip()
-        except Exception:
-            return str(value), None
-
-        if not text:
-            return None, None
-
-        separators = [" - ", " | ", " / ", " — ", " – ", "\n", "-"]
-        for separator in separators:
-            if separator in text:
-                left, right = text.split(separator, 1)
-                left = left.strip(" -|/,\t\r\n")
-                right = right.strip(" -|/,\t\r\n")
-                if left and right:
-                    return left, right
-
-        return text, None
+    def _split_project_location(self, value: Optional[str]) -> tuple:
+        """Delega a common.split_project_location — fuente única de verdad."""
+        return _common_split_location(value)
 
     def _fill_rows(self, worksheet, mapping: dict, rows: List[dict], seed: str = ""):
         if not rows:
@@ -1282,6 +1135,7 @@ class ExcelService:
         photo_paths: Optional[List[Path]] = None,
         clasificacion_suelo: Optional[str] = None,
         valores_laboratorio: Optional[dict] = None,
+        capacidad_portante: Optional[dict] = None,
     ) -> Path:
         work_file = self._copy_template(template_id, project_id)
 
@@ -1329,12 +1183,31 @@ class ExcelService:
                 self._set_cell_value(target_sheet, 'E2', project_value)
                 self._set_cell_value(target_sheet, 'E3', client_value)
                 self._set_cell_value(target_sheet, 'E5', fecha_value)
+                self._set_cell_value(target_sheet, 'F7', 'FECHA:')
+                self._set_cell_value(target_sheet, 'G7', fecha_value)
 
                 # H10/H11 = "Número de golpes ensayo SPT" — mirror n_golpes from LABORATORIO
                 _lab_cap = self._load_lab_state()
                 _n_cap = _lab_cap.get('n_golpes', 16) if _lab_cap else 16
                 self._set_cell_value(target_sheet, 'H10', _n_cap)
                 self._set_cell_value(target_sheet, 'H11', _n_cap + random.randint(4, 7))
+
+                # H12-H18: bearing capacity parameters from laboratory
+                _cp = capacidad_portante or {}
+                if _cp.get('df') is not None:
+                    self._set_cell_value(target_sheet, 'H12', float(_cp['df']))
+                if _cp.get('gm') is not None:
+                    self._set_cell_value(target_sheet, 'H13', float(_cp['gm']))
+                if _cp.get('cohesion_c') is not None:
+                    self._set_cell_value(target_sheet, 'H14', float(_cp['cohesion_c']))
+                if _cp.get('angulo_fi') is not None:
+                    self._set_cell_value(target_sheet, 'H15', float(_cp['angulo_fi']))
+                if _cp.get('ancho_b') is not None:
+                    self._set_cell_value(target_sheet, 'H16', float(_cp['ancho_b']))
+                if _cp.get('largo_l') is not None:
+                    self._set_cell_value(target_sheet, 'H17', float(_cp['largo_l']))
+                if _cp.get('tipo_suelo') is not None:
+                    self._set_cell_value(target_sheet, 'H18', int(_cp['tipo_suelo']))
 
                 wb_tmp.save(work_file)
                 wb_tmp.close()
@@ -1380,8 +1253,8 @@ class ExcelService:
                     if layer_type_text:
                         layer_type_text = layer_type_text.upper()
                 self._set_cell_value(target_sheet, 'H2', project_value)
-                self._set_cell_value(target_sheet, 'Q4', fecha_original_value)
-                self._set_cell_value(target_sheet, 'L2', fecha_plus_20_value)
+                self._set_cell_value(target_sheet, 'L2', fecha_original_value)
+                self._set_cell_value(target_sheet, 'Q4', fecha_plus_20_value)
                 self._set_cell_value(target_sheet, 'E5', cliente_value)
                 if layer_type_text:
                     self._set_cell_value(target_sheet, 'E6', layer_type_text)
@@ -1523,21 +1396,12 @@ class ExcelService:
                 fecha_value = data.get('fecha_registro')
                 proyecto_text = data.get('proyecto_ubicacion')
                 proyecto_value, ubicacion_value = self._split_project_location(proyecto_text)
-                pisos_value = data.get('pisos')
-                try:
-                    pisos_int = int(pisos_value or 0)
-                except Exception:
-                    pisos_int = 0
-
-                if pisos_int > 0:
-                    proyecto_display = f"PROYECTO DE {pisos_int} PISOS NIVELES"
-                else:
-                    proyecto_display = "PROYECTO DE PISOS NIVELES"
 
                 self._set_cell_value(target_sheet, 'C7', cliente_value)
-                self._set_cell_value(target_sheet, 'C8', proyecto_value or proyecto_display)
+                self._set_cell_value(target_sheet, 'C8', proyecto_value or str(proyecto_text or '').strip().upper())
                 self._set_cell_value(target_sheet, 'C9', ubicacion_value)
                 self._set_cell_value(target_sheet, 'C10', None)
+                self._set_cell_value(target_sheet, 'F7', 'FECHA:')
                 self._set_cell_value(target_sheet, 'G7', fecha_value)
 
                 selected_description = None
@@ -1624,6 +1488,13 @@ class ExcelService:
                 _h19 = _lab_st.get('n_golpes', 16) if _lab_st else 16
                 self._set_cell_value(target_sheet, 'H19', _h19)
 
+                # H24 (B - ancho/diámetro cimiento) y H25 (L - largo) desde capacidad_portante
+                _cp_as = capacidad_portante or {}
+                if _cp_as.get('ancho_b') is not None:
+                    self._set_cell_value(target_sheet, 'H24', float(_cp_as['ancho_b']))
+                if _cp_as.get('largo_l') is not None:
+                    self._set_cell_value(target_sheet, 'H25', float(_cp_as['largo_l']))
+
                 wb_tmp.save(work_file)
                 wb_tmp.close()
             finally:
@@ -1643,7 +1514,8 @@ class ExcelService:
             try:
                 fecha_value = data.get('fecha_registro', data.get('fecha_registro_original'))
                 project_value = f"PROYECTO: {data.get('proyecto_ubicacion', '')}".strip()
-                e5_value = 6 if pisos_int <= 3 else (15 if pisos_int <= 10 else 25)
+                _pisos_cfg = get_pisos_config(pisos_int)
+                e5_value = _pisos_cfg["max_depth"]
                 n_campo_values = self._get_legacy_n_campo_values(template_id, use_lower, pisos_int)
 
                 # Build soil descriptions, colors, and depth values for column I of P-1.xls.
@@ -1669,7 +1541,7 @@ class ExcelService:
 
                 # All legacy .xls templates (P-1 through P-4) use the same dynamic
                 # depth scale expansion and proportional column I color logic.
-                _expand_levels = 7 if pisos_int <= 3 else (16 if pisos_int <= 10 else 26)
+                _expand_levels = _pisos_cfg["expand_levels"]
                 self._fill_legacy_xls_template(
                     work_file, project_value, fecha_value, e5_value, n_campo_values,
                     soil_descriptions=_soil_descs if _soil_descs else None,
@@ -1956,14 +1828,14 @@ class ExcelService:
                     except Exception:
                         pass
 
-        # Insert/replace Imagen1.jpg at column T (T1 anchor, hoja P3) for plantilla templates
-        if str(template_id) in {'1', '2', '3'}:
-            try:
-                self._insert_image_plantilla(work_file)
-            except Exception:
-                logger.debug(
-                    "No se pudo insertar imagen en %s", work_file, exc_info=True
-                )
+        # Aplicar todos los recursos visuales registrados para este template.
+        # El resource_manager sabe automáticamente qué recurso va en qué documento.
+        try:
+            resource_manager.apply_to_excel(work_file, str(template_id))
+        except Exception:
+            logger.debug(
+                "No se pudieron aplicar recursos visuales en %s", work_file, exc_info=True
+            )
 
         # remove calcChain if present to avoid Excel repair dialogs
         try:
@@ -1977,6 +1849,10 @@ class ExcelService:
     def _remove_calcchain(self, workbook_path: Path) -> None:
         # safe remove of xl/calcChain.xml, its override and workbook rel
         with ZipFile(workbook_path, 'r') as src:
+            # Fast-path: openpyxl already strips calcChain on save, so this is
+            # usually a no-op. Only read all entries when calcChain is actually present.
+            if 'xl/calcChain.xml' not in src.namelist():
+                return
             entries = {info.filename: src.read(info.filename) for info in src.infolist()}
 
         changed = False

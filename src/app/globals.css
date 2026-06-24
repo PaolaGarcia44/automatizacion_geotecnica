@@ -18,6 +18,11 @@ body {
   font-family: var(--font-sans);
 }
 
+.dark body {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -96,4 +101,47 @@ html {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Dark mode native form elements */
+.dark select,
+.dark input[type='date'] {
+  color-scheme: dark;
+}
+
+/* ── Dark mode CSS fallbacks ─────────────────────────────────────────
+   These guarantee correct colors even if Tailwind dark: classes don't
+   generate (e.g. during build cache issues). They mirror the Tailwind
+   dark: classes applied in the components.
+─────────────────────────────────────────────────────────────────── */
+
+/* Layout surfaces */
+.dark aside {
+  background-color: #1e293b;
+  border-color: #334155;
+}
+.dark header {
+  background-color: #1e293b;
+  border-color: #334155;
+}
+
+/* Inputs and selects — these are the most likely to look wrong */
+.dark input:not([type='checkbox']):not([type='radio']),
+.dark select,
+.dark textarea {
+  background-color: #334155;
+  border-color: #475569;
+  color: #f1f5f9;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b;
 }

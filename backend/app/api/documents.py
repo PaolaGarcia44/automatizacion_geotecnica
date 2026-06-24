@@ -62,6 +62,7 @@ async def generate_documents(
     word_template_filename: Optional[str] = Form(None),
     valores_laboratorio: Optional[str] = Form(None),
     valores_laboratorio_por_lab: Optional[str] = Form(None),
+    capacidad_portante: Optional[str] = Form(None),
     files: list[UploadFile] | None = File(None),
 ) -> DocumentGenerationResponse:
     try:
@@ -114,6 +115,13 @@ async def generate_documents(
             except Exception:
                 vl_por_lab = None
 
+        cap_portante = None
+        if capacidad_portante:
+            try:
+                cap_portante = json.loads(capacidad_portante)
+            except Exception:
+                cap_portante = None
+
         result = document_service.generate_documents(
             template_id=template_id,
             template_ids=json.loads(template_ids) if template_ids else None,
@@ -132,6 +140,7 @@ async def generate_documents(
             word_template_filename=word_template_filename or None,
             valores_laboratorio=vl,
             valores_laboratorio_por_lab=vl_por_lab,
+            capacidad_portante=cap_portante,
         )
 
         return DocumentGenerationResponse(**result)

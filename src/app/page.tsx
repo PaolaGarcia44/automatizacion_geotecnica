@@ -1,5 +1,12 @@
-import { redirect } from 'next/navigation'
+'use client'
+
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function Home() {
-  redirect('/generate')
+  const router = useRouter()
+  useEffect(() => {
+    router.replace('/generate')
+  }, [router])
+  return null
 }

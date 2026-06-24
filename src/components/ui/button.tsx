@@ -4,16 +4,16 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white dark:ring-offset-secondary-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
         default: 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800',
         destructive: 'bg-red-600 text-white hover:bg-red-700 active:bg-red-800',
-        outline: 'border border-secondary-200 bg-white hover:bg-secondary-50 text-secondary-900',
-        secondary: 'bg-secondary-100 text-secondary-900 hover:bg-secondary-200',
-        ghost: 'hover:bg-secondary-100 hover:text-secondary-900',
-        link: 'text-primary-600 underline-offset-4 hover:underline',
+        outline: 'border border-secondary-200 bg-white hover:bg-secondary-50 text-secondary-900 dark:border-secondary-600 dark:bg-secondary-800 dark:hover:bg-secondary-700 dark:text-secondary-100',
+        secondary: 'bg-secondary-100 text-secondary-900 hover:bg-secondary-200 dark:bg-secondary-700 dark:text-secondary-100 dark:hover:bg-secondary-600',
+        ghost: 'hover:bg-secondary-100 hover:text-secondary-900 dark:hover:bg-secondary-700 dark:hover:text-secondary-100',
+        link: 'text-primary-600 underline-offset-4 hover:underline dark:text-primary-400',
       },
       size: {
         default: 'h-10 px-4 py-2',

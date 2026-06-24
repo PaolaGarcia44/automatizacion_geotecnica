@@ -36,6 +36,16 @@ export interface ValoresLaboratorio {
   humedad?: number
 }
 
+export interface CapacidadPortante {
+  df?: number
+  gm?: number
+  cohesion_c?: number
+  angulo_fi?: number
+  ancho_b?: number
+  largo_l?: number
+  tipo_suelo?: number
+}
+
 export interface DocumentGenerationRequest {
   proyecto_ubicacion: string
   cliente?: string
@@ -50,6 +60,7 @@ export interface DocumentGenerationRequest {
   word_template_filename?: string
   valores_laboratorio?: ValoresLaboratorio
   valores_laboratorio_por_lab?: Record<string, ValoresLaboratorio>
+  capacidad_portante?: CapacidadPortante
 }
 
 export interface DocumentGenerationResponse {
@@ -134,6 +145,9 @@ export const generateDocuments = async (
     if (request.valores_laboratorio_por_lab && Object.keys(request.valores_laboratorio_por_lab).length > 0) {
       form.append('valores_laboratorio_por_lab', JSON.stringify(request.valores_laboratorio_por_lab))
     }
+    if (request.capacidad_portante && Object.keys(request.capacidad_portante).length > 0) {
+      form.append('capacidad_portante', JSON.stringify(request.capacidad_portante))
+    }
 
     if (images && images.length) {
       images.forEach((file) => form.append('files', file, file.name))
@@ -209,7 +223,7 @@ export const healthCheck = async (): Promise<{
   version?: string
 }> => {
   try {
-    const response = await fetch(`${API_URL}/api/health`)
+    const response = await fetch(`${API_URL}/health`)
 
     if (!response.ok) {
       throw new Error('Backend no disponible')
@@ -239,7 +253,26 @@ export const downloadGeneratedFile = async (downloadUrl?: string): Promise<void>
     throw new Error('No hay archivo para descargar')
   }
 
-  const response = await fetch(buildDownloadUrl(downloadUrl))
+  const fullUrl = buildDownloadUrl(downloadUrl)
+  const urlPath = (() => {
+    try { return new URL(fullUrl).pathname } catch { return downloadUrl }
+  })()
+  const filename = decodeURIComponent(urlPath.split('/').pop() || 'documentos.zip')
+
+  // En Electron: el proceso principal descarga el archivo directamente via
+  // Node.js http.get() y muestra el diálogo de guardado nativo. Esto evita
+  // por completo los problemas de sincronización con blob URLs en el renderer.
+  const electronAPI = typeof window !== 'undefined'
+    ? (window as { electronAPI?: { isElectron?: boolean; downloadFile?: (url: string, name: string) => Promise<{ success: boolean }> } }).electronAPI
+    : undefined
+
+  if (electronAPI?.isElectron && electronAPI?.downloadFile) {
+    await electronAPI.downloadFile(fullUrl, filename)
+    return
+  }
+
+  // En navegador web: fetch + blob
+  const response = await fetch(fullUrl)
 
   if (!response.ok) {
     throw new Error('No se pudo descargar el archivo generado')
@@ -249,14 +282,6 @@ export const downloadGeneratedFile = async (downloadUrl?: string): Promise<void>
   const objectUrl = window.URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = objectUrl
-  const urlPath = (() => {
-    try {
-      return new URL(buildDownloadUrl(downloadUrl)).pathname
-    } catch {
-      return downloadUrl
-    }
-  })()
-  const filename = decodeURIComponent(urlPath.split('/').pop() || 'CORRELACIÓN GEOTÉCNICA DE PARÁMETROS GEOMECÁNICOS.zip')
   anchor.download = filename
   document.body.appendChild(anchor)
   anchor.click()

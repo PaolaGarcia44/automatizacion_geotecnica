@@ -46,3 +46,13 @@ Thumbs.db
 # Plantillas Word (12 GB - demasiado grandes para GitHub, se guardan en OneDrive)
 backend/templates/word/*.docx
 backend/templates/word/*.doc
+
+# Electron / Desktop build
+dist_electron/
+backend/dist/
+backend/build/
+backend/__pycache__/
+backend/app/**/__pycache__/
+
+# PyInstaller
+*.spec.bak
