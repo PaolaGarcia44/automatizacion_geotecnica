@@ -422,10 +422,14 @@ class StratigraphicProfile3DService:
         return 2.0
 
     def _target_depth(self, pisos: int) -> float:
-        """Profundidad total del perfil según número de pisos."""
-        if pisos <= 3:  return 6.0
-        if pisos <= 10: return 15.0
-        return 25.0
+        """Profundidad total del perfil — alineada con la correlación Excel.
+
+        La correlación escribe profundidades i + 0.45 para i in range(spt_count),
+        por lo que el último valor es (spt_count - 1) + 0.45.
+        """
+        from app.core.constants import get_pisos_config
+        cfg = get_pisos_config(pisos)
+        return round((cfg["spt_count"] - 1) + 0.45, 2)
 
     def _build_layers(self, perf: List[Dict]) -> List[Dict]:
         layers: List[Dict] = []; prev=0.0
@@ -484,15 +488,15 @@ class StratigraphicProfile3DService:
             path=_layer_path(boundaries[i],boundaries[i+1])
             P.append(f'  <clipPath id="cpl{i}"><path d="{path}"/></clipPath>')
 
-        # Gradientes de iluminación por capa
+        # Gradientes de iluminación por capa — color base en la parte superior
+        # (sin aclarado para que el color coincida con la leyenda en toda la capa)
         for i,lay in enumerate(layers):
             h6=lay["hex"]; ys=self.Y0+lay["d0"]*ppm; he=lay["esp"]*ppm
-            ct=_lighten(h6,0.28); cb=_darken(h6,0.22)
+            cb=_darken(h6,0.15)
             P.append(
                 f'  <linearGradient id="gL{i}" x1="0" y1="{ys:.1f}"'
                 f' x2="0" y2="{ys+he:.1f}" gradientUnits="userSpaceOnUse">'
-                f'<stop offset="0%"   stop-color="#{ct}"/>'
-                f'<stop offset="25%"  stop-color="#{h6}"/>'
+                f'<stop offset="0%"   stop-color="#{h6}"/>'
                 f'<stop offset="100%" stop-color="#{cb}"/>'
                 f'</linearGradient>'
             )

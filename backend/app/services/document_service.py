@@ -446,6 +446,7 @@ class DocumentService:
                 "cliente": cliente,
                 "sondeo": sondeo,
                 "pisos": nPisos,
+                "municipio_word": str(municipio_word or '').strip().upper() or None,
                 # static label required by UI: A5 should read 'Parámetro:'
                 "parametro_label": "Parámetro:",
             }
@@ -565,6 +566,10 @@ class DocumentService:
                         perforaciones=default_perforaciones,
                         parametros=parametros or [],
                         photo_paths=_p_photos if _p_photos else None,
+                        clasificacion_suelo=clasificacion_suelo,
+                        valores_laboratorio=valores_laboratorio,
+                        valores_laboratorio_por_lab=valores_laboratorio_por_lab,
+                        clasificaciones_por_lab=clasificaciones_por_lab,
                     )
                     return tpl_id, pt_archive, f
 

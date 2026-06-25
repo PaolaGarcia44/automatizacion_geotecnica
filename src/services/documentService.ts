@@ -37,6 +37,8 @@ export interface ValoresLaboratorio {
 }
 
 export interface CapacidadPortante {
+  n10?: number        // N° golpes SPT en H10 (anula el auto-calculado)
+  n11?: number        // N° golpes SPT en H11 (anula el auto-calculado)
   df?: number
   gm?: number
   cohesion_c?: number

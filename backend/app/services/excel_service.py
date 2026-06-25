@@ -160,6 +160,8 @@ class ExcelService:
         depth_values: Optional[List[float]] = None,
         expand_depth_levels: Optional[int] = None,
         photo_paths: Optional[List[Path]] = None,
+        lab_data_per_layer: Optional[List[Optional[dict]]] = None,
+        municipio: Optional[str] = None,
     ) -> None:
         try:
             import pythoncom
@@ -204,20 +206,19 @@ class ExcelService:
             if e5_value is not None:
                 worksheet.Range("E5").Value = e5_value
 
-            # Update column B depth markers (Z(m)) based on layer count.
-            # Template slots: rows 10, 12, 14, 16, 18, 20 — one per layer, same order as plantilla_1.
-            # Skipped when expand_depth_levels is set (B column handled by the scale block below).
-            if depth_values is not None and expand_depth_levels is None:
-                _depth_row_slots = [10, 12, 14, 16, 18, 20]
-                for r in _depth_row_slots:
+            if municipio:
+                worksheet.Range("O5").Value = municipio
+
+            # Update column B with SPT sample depths (0.45, 1.45, 2.45…).
+            # Slots: B8=level0, B10=level1, B12=level2, B14=level3, B16=level4, B18=level5, B20=level6.
+            # Skipped when expand_depth_levels is set (B handled by the scale block below).
+            if expand_depth_levels is None:
+                _b_all_slots = [8, 10, 12, 14, 16, 18, 20]
+                for _b_idx, _b_row in enumerate(_b_all_slots):
                     try:
-                        worksheet.Range(f"B{r}").Value = ""
+                        worksheet.Range(f"B{_b_row}").Value = round(_b_idx + 0.45, 2)
                     except Exception:
                         pass
-                for idx, d_val in enumerate(depth_values[:len(_depth_row_slots)]):
-                    worksheet.Range(f"B{_depth_row_slots[idx]}").Value = (
-                        d_val if d_val and d_val > 0 else float(idx + 1)
-                    )
 
             # Dynamic depth scale expansion for P-1 (and similar single-column-B templates).
             # The template has 7 levels (0-6) in rows 8-21, each occupying 2 merged rows.
@@ -257,10 +258,11 @@ class ExcelService:
                         _k.HorizontalAlignment = -4108
                         _k.VerticalAlignment = -4108
 
-                # Write depth scale 0 … target_levels-1 to every B level (existing + new).
+                # Write SPT sample depths (0.45, 1.45, 2.45…) to column B.
+                # These are the midpoint depths for each SPT test interval.
                 for _lvl in range(target_levels):
                     _row = _B_FIRST_ROW + _lvl * _ROWS_PER
-                    worksheet.Range(f"B{_row}").Value = float(_lvl)
+                    worksheet.Range(f"B{_row}").Value = round(_lvl + 0.45, 2)
 
             # Write N campo values to column T starting at row 13.
             # MUST run after expand_depth_levels inserts rows — if written before,
@@ -477,6 +479,53 @@ class ExcelService:
                     "No se pudieron expandir las gráficas en %s",
                     workbook_path, exc_info=True,
                 )
+
+            # === LAB RESULTS — columns L (w), M (LL), N (LP), O (IP), P (γ), R (USCS) ===
+            # One row per layer: row = 8 + layer_index * 2
+            # First clear all template placeholder values in these columns (rows 8-20).
+            if lab_data_per_layer:
+                try:
+                    _LAB_FIRST_ROW = 8
+                    _LAB_ROWS_PER = 2
+                    _LAB_COLS = ('L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S')
+                    _n_levels = int(expand_depth_levels) if expand_depth_levels is not None else 7
+                    for _ci in range(_n_levels):
+                        _cr = _LAB_FIRST_ROW + _ci * _LAB_ROWS_PER
+                        for _col in _LAB_COLS:
+                            try:
+                                worksheet.Range(f"{_col}{_cr}").ClearContents()
+                            except Exception:
+                                pass
+
+                    for _li, _ldata in enumerate(lab_data_per_layer):
+                        if _ldata is None:
+                            continue
+                        _lr = _LAB_FIRST_ROW + _li * _LAB_ROWS_PER
+                        _w   = _ldata.get('humedad')
+                        _ll  = _ldata.get('limite_liquido')
+                        _lp  = _ldata.get('limite_plastico')
+                        _ip  = _ldata.get('indice_plasticidad')
+                        _gam = _ldata.get('gamma')
+                        _cls = _ldata.get('clasificacion_uscs')
+                        if _w is not None:
+                            worksheet.Range(f"L{_lr}").Value = _w
+                            worksheet.Range(f"L{_lr}").NumberFormat = "0.0"
+                        if _ll is not None:
+                            worksheet.Range(f"M{_lr}").Value = _ll
+                            worksheet.Range(f"M{_lr}").NumberFormat = "0"
+                        if _lp is not None:
+                            worksheet.Range(f"N{_lr}").Value = _lp
+                            worksheet.Range(f"N{_lr}").NumberFormat = "0"
+                        if _ip is not None:
+                            worksheet.Range(f"O{_lr}").Value = _ip
+                            worksheet.Range(f"O{_lr}").NumberFormat = "0"
+                        if _gam is not None:
+                            worksheet.Range(f"P{_lr}").Value = _gam
+                            worksheet.Range(f"P{_lr}").NumberFormat = "0.0"
+                        if _cls:
+                            worksheet.Range(f"R{_lr}").Value = str(_cls).upper()
+                except Exception:
+                    logger.debug("No se pudieron escribir datos de laboratorio en %s", workbook_path, exc_info=True)
 
             workbook.Save()
         finally:
@@ -709,8 +758,9 @@ class ExcelService:
 
         Row depths are 0.45, 1.45, 2.45, … starting at start_row.
         For each row depth D:
-          - Find the last layer whose profundidad_z <= D → that layer covers the row.
-          - If D exceeds the deepest layer's end-depth → row is empty (not included).
+          - Find the FIRST layer whose profundidad_z >= D.  That is the layer whose
+            depth range [prev_end, current_end] contains D.
+          - If D exceeds the deepest layer's end-depth → extend the last layer.
         Accepts comma or dot as decimal separator in profundidad_z.
         """
         def _to_float(v) -> float:
@@ -745,10 +795,14 @@ class ExcelService:
                 # Extend the last defined layer to fill all remaining column A rows.
                 row_assignments.append(last_layer_idx)
             else:
-                active_idx = None
+                # Find the FIRST layer whose end-depth >= row_depth.
+                # A row at depth D belongs to the layer whose range contains D,
+                # i.e. the layer that ends at or after D (first such layer in sorted order).
+                active_idx = last_layer_idx  # fallback: last layer
                 for j, d in enumerate(depths):
-                    if d > 0 and d <= row_depth + 1e-9:
+                    if d > 0 and d >= row_depth - 1e-9:
                         active_idx = j
+                        break
                 row_assignments.append(active_idx)
 
         segments: List[tuple] = []
@@ -1060,8 +1114,12 @@ class ExcelService:
 
         return None
 
-    def _apply_atterberg_to_sheet(self, target_sheet, ll: float, lp: float) -> int:
-        """Write LL and LP input cells for a 3-point Casagrande test with realistic weights."""
+    def _apply_atterberg_to_sheet(self, target_sheet, ll: float, lp: float):
+        """Write LL and LP input cells for a 3-point Casagrande test with realistic weights.
+
+        Returns (n_k, lp_raw) where lp_raw = [[wet+tara, dry+tara, tara], ...]
+        for the first 2 LP replicates — used by INCONFINADO for consistency.
+        """
         n_k = random.choice([14, 15, 16])
         n_l = random.choice([24, 25, 26])
         n_m = random.choice([34, 35, 36])
@@ -1087,6 +1145,7 @@ class ExcelService:
             self._set_cell_value(target_sheet, wet_ref, wet_t)
 
         # LP weights — 3 replicates; K23 (dry+tara) ≤ 25, K22 (wet+tara) < 70
+        lp_raw = []
         for wet_r, dry_r, tara_r in [
             ('K22', 'K23', 'K24'),
             ('L22', 'L23', 'L24'),
@@ -1098,8 +1157,9 @@ class ExcelService:
             self._set_cell_value(target_sheet, tara_r, tara)
             self._set_cell_value(target_sheet, dry_r, dry_t)
             self._set_cell_value(target_sheet, wet_r, wet_t)
+            lp_raw.append([wet_t, dry_t, tara])
 
-        return n_k
+        return n_k, lp_raw[:2]
 
     # G25 base values read data_only from each lab template.
     # Each template has a different Q6 (initial sample weight), which drives
@@ -1136,6 +1196,8 @@ class ExcelService:
         clasificacion_suelo: Optional[str] = None,
         valores_laboratorio: Optional[dict] = None,
         capacidad_portante: Optional[dict] = None,
+        valores_laboratorio_por_lab: Optional[dict] = None,
+        clasificaciones_por_lab: Optional[dict] = None,
     ) -> Path:
         work_file = self._copy_template(template_id, project_id)
 
@@ -1183,31 +1245,123 @@ class ExcelService:
                 self._set_cell_value(target_sheet, 'E2', project_value)
                 self._set_cell_value(target_sheet, 'E3', client_value)
                 self._set_cell_value(target_sheet, 'E5', fecha_value)
-                self._set_cell_value(target_sheet, 'F7', 'FECHA:')
-                self._set_cell_value(target_sheet, 'G7', fecha_value)
 
-                # H10/H11 = "Número de golpes ensayo SPT" — mirror n_golpes from LABORATORIO
-                _lab_cap = self._load_lab_state()
-                _n_cap = _lab_cap.get('n_golpes', 16) if _lab_cap else 16
-                self._set_cell_value(target_sheet, 'H10', _n_cap)
-                self._set_cell_value(target_sheet, 'H11', _n_cap + random.randint(4, 7))
+                # ── Auto-derivar parámetros de capacidad portante ─────────────
+                # Prioridad: capacidad_portante del usuario > auto-calculado
 
-                # H12-H18: bearing capacity parameters from laboratory
+                # 1. Profundidad de desplante Df según número de pisos
+                if pisos_int <= 1:
+                    _df_auto = 1.0
+                elif pisos_int <= 3:
+                    _df_auto = 1.5
+                elif pisos_int <= 6:
+                    _df_auto = 2.0
+                else:
+                    _df_auto = 2.5
+
+                # 2. Tipo de suelo desde clasificacion_suelo (USCS)
+                _cls_up8 = (clasificacion_suelo or '').strip().upper()
+                _sandy_cls8 = {'SM', 'SP', 'SW', 'GW', 'GP', 'GM', 'GC', 'SC',
+                                'SP-SM', 'SW-SM', 'SW-SC', 'SP-SC',
+                                'GW-GM', 'GP-GM', 'GW-GC', 'GP-GC'}
+                _firm_clay8 = {'CL', 'CH', 'CL-ML', 'CL-CH'}
+                if _cls_up8 in _sandy_cls8:
+                    _tipo_auto = 3   # Arenoso
+                elif _cls_up8 in _firm_clay8:
+                    _tipo_auto = 1   # Arcilloso firme
+                else:
+                    _tipo_auto = 2   # Arcilloso blando (ML, MH, ML-CL, default)
+
+                # 3. N° golpes SPT desde la misma secuencia de correlación geotécnica
+                #    Los valores en H10/H11 deben coincidir con los que aparecerán
+                #    en la columna F de la plantilla de correlación (mismas profundidades).
+                _pisos_cfg_8 = get_pisos_config(pisos_int)
+                _spt_seq_8 = get_spt_values(_pisos_cfg_8['template_id'], True)
+                # Índice de profundidad ≈ Df: depths = 0.45, 1.45, 2.45, ...
+                _df_idx8 = max(0, int(_df_auto - 0.45))
+                _n10_auto = int(_spt_seq_8[_df_idx8]) if _df_idx8 < len(_spt_seq_8) else 15
+                _n11_auto = int(_spt_seq_8[_df_idx8 + 1]) if (_df_idx8 + 1) < len(_spt_seq_8) else _n10_auto + 5
+
+                # 4. Peso volumétrico Gm típico según tipo de suelo
+                _gm_vals8 = [float(lr.get('gamma') or 0) for lr in (perforaciones or []) if float(lr.get('gamma') or 0) > 0]
+                if _gm_vals8:
+                    _gm_auto = round(sum(_gm_vals8) / len(_gm_vals8), 2)
+                elif _tipo_auto == 3:
+                    _gm_auto = 1.85   # suelo arenoso
+                elif _tipo_auto == 1:
+                    _gm_auto = 1.80   # arcilla firme
+                else:
+                    _gm_auto = 1.74   # arcilla/limo blando
+
+                # 5. c y Φ efectivos drenados según tipo + SPT
+                #    Correlación: consistencia del suelo → c' y Φ' (Terzaghi-Peck / Peck et al.)
+                _n_rep8 = _n10_auto
+                if _tipo_auto == 3:   # Arenoso: c'≈0, Φ' desde SPT (Peck et al.)
+                    _c_auto = 0.0
+                    if _n_rep8 < 10:
+                        _phi_auto = 28.0
+                    elif _n_rep8 < 20:
+                        _phi_auto = 30.0
+                    elif _n_rep8 < 30:
+                        _phi_auto = 33.0
+                    elif _n_rep8 < 50:
+                        _phi_auto = 36.0
+                    else:
+                        _phi_auto = 40.0
+                elif _tipo_auto == 1:  # Arcilloso firme (CL, CH)
+                    if _n_rep8 < 4:
+                        _c_auto, _phi_auto = 0.08, 12.0
+                    elif _n_rep8 < 8:
+                        _c_auto, _phi_auto = 0.12, 16.0
+                    elif _n_rep8 < 15:
+                        _c_auto, _phi_auto = 0.18, 22.0
+                    elif _n_rep8 < 30:
+                        _c_auto, _phi_auto = 0.25, 26.0
+                    else:
+                        _c_auto, _phi_auto = 0.35, 30.0
+                else:                  # Arcilloso blando (ML, MH, ML-CL, default)
+                    if _n_rep8 < 4:
+                        _c_auto, _phi_auto = 0.05, 8.0
+                    elif _n_rep8 < 8:
+                        _c_auto, _phi_auto = 0.08, 12.0
+                    elif _n_rep8 < 15:
+                        _c_auto, _phi_auto = 0.12, 18.0
+                    elif _n_rep8 < 30:
+                        _c_auto, _phi_auto = 0.18, 22.0
+                    else:
+                        _c_auto, _phi_auto = 0.25, 26.0
+
+                # 6. Dimensiones del cimiento (B, L) según pisos
+                if pisos_int <= 2:
+                    _b_auto = _l_auto = 1.0
+                elif pisos_int <= 5:
+                    _b_auto = _l_auto = 1.3
+                elif pisos_int <= 10:
+                    _b_auto = _l_auto = 1.5
+                else:
+                    _b_auto = _l_auto = 2.0
+
+                # 7. Aplicar (override del usuario tiene prioridad sobre el auto-cálculo)
                 _cp = capacidad_portante or {}
-                if _cp.get('df') is not None:
-                    self._set_cell_value(target_sheet, 'H12', float(_cp['df']))
-                if _cp.get('gm') is not None:
-                    self._set_cell_value(target_sheet, 'H13', float(_cp['gm']))
-                if _cp.get('cohesion_c') is not None:
-                    self._set_cell_value(target_sheet, 'H14', float(_cp['cohesion_c']))
-                if _cp.get('angulo_fi') is not None:
-                    self._set_cell_value(target_sheet, 'H15', float(_cp['angulo_fi']))
-                if _cp.get('ancho_b') is not None:
-                    self._set_cell_value(target_sheet, 'H16', float(_cp['ancho_b']))
-                if _cp.get('largo_l') is not None:
-                    self._set_cell_value(target_sheet, 'H17', float(_cp['largo_l']))
-                if _cp.get('tipo_suelo') is not None:
-                    self._set_cell_value(target_sheet, 'H18', int(_cp['tipo_suelo']))
+                _n10 = int(_cp['n10'])        if _cp.get('n10')         is not None else _n10_auto
+                _n11 = int(_cp['n11'])        if _cp.get('n11')         is not None else _n11_auto
+                _df  = float(_cp['df'])       if _cp.get('df')          is not None else _df_auto
+                _gm  = float(_cp['gm'])       if _cp.get('gm')          is not None else _gm_auto
+                _c   = float(_cp['cohesion_c']) if _cp.get('cohesion_c') is not None else _c_auto
+                _phi = float(_cp['angulo_fi']) if _cp.get('angulo_fi')  is not None else _phi_auto
+                _b   = float(_cp['ancho_b'])  if _cp.get('ancho_b')     is not None else _b_auto
+                _l   = float(_cp['largo_l'])  if _cp.get('largo_l')     is not None else _l_auto
+                _tipo = int(_cp['tipo_suelo']) if _cp.get('tipo_suelo') is not None else _tipo_auto
+
+                self._set_cell_value(target_sheet, 'H10', _n10)
+                self._set_cell_value(target_sheet, 'H11', _n11)
+                self._set_cell_value(target_sheet, 'H12', round(_df, 2))
+                self._set_cell_value(target_sheet, 'H13', round(_gm, 2))
+                self._set_cell_value(target_sheet, 'H14', round(_c, 3))
+                self._set_cell_value(target_sheet, 'H15', round(_phi, 1))
+                self._set_cell_value(target_sheet, 'H16', round(_b, 2))
+                self._set_cell_value(target_sheet, 'H17', round(_l, 2))
+                self._set_cell_value(target_sheet, 'H18', _tipo)
 
                 wb_tmp.save(work_file)
                 wb_tmp.close()
@@ -1253,8 +1407,8 @@ class ExcelService:
                     if layer_type_text:
                         layer_type_text = layer_type_text.upper()
                 self._set_cell_value(target_sheet, 'H2', project_value)
-                self._set_cell_value(target_sheet, 'L2', fecha_original_value)
-                self._set_cell_value(target_sheet, 'Q4', fecha_plus_20_value)
+                self._set_cell_value(target_sheet, 'L2', fecha_plus_20_value)
+                self._set_cell_value(target_sheet, 'Q4', fecha_original_value)
                 self._set_cell_value(target_sheet, 'E5', cliente_value)
                 if layer_type_text:
                     self._set_cell_value(target_sheet, 'E6', layer_type_text)
@@ -1278,6 +1432,7 @@ class ExcelService:
                 _atterberg = self._atterberg_for_clasificacion(clasificacion_suelo or '')
                 _k14_used = None
                 _has_cls = bool((clasificacion_suelo or '').strip())
+                _lp_raw: list = []
 
                 # Manual lab values provided by the user via the frontend form
                 _vl = valores_laboratorio or {}
@@ -1297,14 +1452,14 @@ class ExcelService:
                 # classification, so the user's exact decimal is used as-is.
                 if _has_cls and _atterberg:
                     # Classification wins — generate Casagrande data that satisfies it.
-                    _k14_used = self._apply_atterberg_to_sheet(target_sheet, _atterberg[0], _atterberg[1])
+                    _k14_used, _lp_raw = self._apply_atterberg_to_sheet(target_sheet, _atterberg[0], _atterberg[1])
                     if (clasificacion_suelo or '').strip().upper() in ('SM', 'C'):
                         self._set_sm_gradation(target_sheet, template_id)
                 elif _manual_ll is not None or _manual_lp is not None:
                     # No classification — manual values drive Casagrande generation.
                     _ll = float(_manual_ll) if _manual_ll is not None else float(random.randint(35, 45))
                     _lp = float(_manual_lp) if _manual_lp is not None else float(random.randint(15, 25))
-                    _k14_used = self._apply_atterberg_to_sheet(target_sheet, _ll, _lp)
+                    _k14_used, _lp_raw = self._apply_atterberg_to_sheet(target_sheet, _ll, _lp)
                 else:
                     # Default: random Casagrande blow counts (3-point test)
                     _k14_used = random.choice([14, 15, 16])
@@ -1338,6 +1493,8 @@ class ExcelService:
                         self._set_cell_value(target_sheet, _tara_r, _tara)
                         self._set_cell_value(target_sheet, _dry_r, _dry_t)
                         self._set_cell_value(target_sheet, _wet_r, _wet_t)
+                        if len(_lp_raw) < 2:
+                            _lp_raw.append([_wet_t, _dry_t, _tara])
 
                 # --- Summary cell overrides ---
                 # F30/F31 only when there is NO classification (classification formula
@@ -1362,6 +1519,29 @@ class ExcelService:
                                     break
                         target_sheet[_resolved].number_format = '0.##'
 
+                # Tara N° del ensayo LP — IDs de los recipientes (K21/L21/M21).
+                _tara_id_1 = random.randint(10, 60)
+                _tara_id_2 = random.randint(10, 60)
+                _tara_id_3 = random.randint(61, 99)
+                try:
+                    self._set_cell_value(target_sheet, 'K21', _tara_id_1)
+                    self._set_cell_value(target_sheet, 'L21', _tara_id_2)
+                    self._set_cell_value(target_sheet, 'M21', _tara_id_3)
+                except Exception:
+                    pass
+
+                # Tara N° del ensayo LL — IDs de los recipientes (K13/L13/M13).
+                # Estos mismos valores van a C12/D12 del INCONFINADO.
+                _ll_tara_id_1 = random.randint(61, 99)
+                _ll_tara_id_2 = random.randint(10, 60)
+                _ll_tara_id_3 = random.randint(10, 60)
+                try:
+                    self._set_cell_value(target_sheet, 'K13', _ll_tara_id_1)
+                    self._set_cell_value(target_sheet, 'L13', _ll_tara_id_2)
+                    self._set_cell_value(target_sheet, 'M13', _ll_tara_id_3)
+                except Exception:
+                    pass
+
                 # Save lab state from the first lab template so INCONFINADO and
                 # ASENTAMIENTOS can use consistent values (n_golpes, lp, humedad).
                 if str(template_id) == '4':
@@ -1374,6 +1554,11 @@ class ExcelService:
                     _lab_state: dict = {'n_golpes': _lab_n, 'lp': float(_lab_lp)}
                     if _manual_humedad is not None:
                         _lab_state['humedad'] = float(_manual_humedad)
+                    # Persist raw LP measurements so INCONFINADO reuses the same weights.
+                    if _lp_raw:
+                        _lab_state['lp_raw'] = _lp_raw
+                    # Persist LL tara IDs (K13/L13) → INCONFINADO C12/D12.
+                    _lab_state['tara_ids'] = [_ll_tara_id_1, _ll_tara_id_2]
                     self._save_lab_state(_lab_state)
 
                 wb_tmp.save(work_file)
@@ -1396,13 +1581,27 @@ class ExcelService:
                 fecha_value = data.get('fecha_registro')
                 proyecto_text = data.get('proyecto_ubicacion')
                 proyecto_value, ubicacion_value = self._split_project_location(proyecto_text)
+                sondeo_value = str(data.get('sondeo') or 'P-1').strip().upper()
+                nivel_freatico_value = str(data.get('nivel_freatico') or 'N.A.').strip()
 
+                # Fila 7: cliente y fecha
                 self._set_cell_value(target_sheet, 'C7', cliente_value)
-                self._set_cell_value(target_sheet, 'C8', proyecto_value or str(proyecto_text or '').strip().upper())
-                self._set_cell_value(target_sheet, 'C9', ubicacion_value)
-                self._set_cell_value(target_sheet, 'C10', None)
                 self._set_cell_value(target_sheet, 'F7', 'FECHA:')
                 self._set_cell_value(target_sheet, 'G7', fecha_value)
+
+                # Fila 8: proyecto | sondeo MUESTRA N° | nivel freático
+                self._set_cell_value(target_sheet, 'C8', proyecto_value or str(proyecto_text or '').strip().upper())
+                self._set_cell_value(target_sheet, 'F8', sondeo_value)
+                self._set_cell_value(target_sheet, 'G8', 'MUESTRA')
+                self._set_cell_value(target_sheet, 'H8', 1)
+                self._set_cell_value(target_sheet, 'J8', nivel_freatico_value)
+
+                # Fila 9: localización — municipio del informe Word (si lo seleccionó el usuario)
+                _municipio9 = data.get('municipio_word') or ubicacion_value
+                self._set_cell_value(target_sheet, 'C9', _municipio9)
+
+                # Fila 10: descripción de la muestra (se rellena abajo con perforaciones)
+                self._set_cell_value(target_sheet, 'C10', None)
 
                 selected_description = None
                 if perforaciones:
@@ -1425,18 +1624,31 @@ class ExcelService:
                 # Mirror moisture content data from LABORATORIO LP test.
                 # C13/D13 = húmedo+tara, C14/D14 = seco+tara, C15/D15 = tara.
                 # C16/D16 and C17 are formula cells — leave them untouched.
+                # When lp_raw is present (saved by template 4), reuse those exact weights
+                # so laboratorio and inconfinado show consistent moisture data.
                 _lab_st9 = self._load_lab_state()
                 _lp_val = int(_lab_st9.get('lp', 22)) if _lab_st9 else 22
-                for _ch, _cs, _ct in [('C13', 'C14', 'C15'), ('D13', 'D14', 'D15')]:
-                    _tara = round(random.uniform(5.5, 8.0), 2)
-                    _seco_net = round(random.uniform(11.0, 16.0), 2)
-                    _seco_t = round(_tara + _seco_net, 2)
-                    _humid_t = round(_seco_t + _seco_net * _lp_val / 100, 2)
+                _lp_raw9 = (_lab_st9.get('lp_raw') or []) if _lab_st9 else []
+                for _idx, (_ch, _cs, _ct) in enumerate([('C13', 'C14', 'C15'), ('D13', 'D14', 'D15')]):
+                    if _idx < len(_lp_raw9):
+                        _humid_t, _seco_t, _tara = _lp_raw9[_idx]
+                    else:
+                        _tara = round(random.uniform(5.5, 8.0), 2)
+                        _seco_net = round(random.uniform(11.0, 16.0), 2)
+                        _seco_t = round(_tara + _seco_net, 2)
+                        _humid_t = round(_seco_t + _seco_net * _lp_val / 100, 2)
                     self._set_cell_value(target_sheet, _ch, _humid_t)
                     self._set_cell_value(target_sheet, _cs, _seco_t)
                     self._set_cell_value(target_sheet, _ct, _tara)
-                self._set_cell_value(target_sheet, 'C12', random.randint(80, 99))
-                self._set_cell_value(target_sheet, 'D12', random.randint(55, 79))
+                # C12/D12 = Tara N° — mismos IDs que K21/L21 del laboratorio (template 4)
+                _tara_ids9 = (_lab_st9.get('tara_ids') or []) if _lab_st9 else []
+                _c12 = _tara_ids9[0] if len(_tara_ids9) > 0 else random.randint(10, 60)
+                _d12 = _tara_ids9[1] if len(_tara_ids9) > 1 else random.randint(10, 60)
+                self._set_cell_value(target_sheet, 'C12', _c12)
+                self._set_cell_value(target_sheet, 'D12', _d12)
+
+                # Quitar la imagen "MUESTRA FALLADA" embebida en la plantilla
+                target_sheet._images = []
 
                 wb_tmp.save(work_file)
                 wb_tmp.close()
@@ -1483,17 +1695,70 @@ class ExcelService:
                 self._set_cell_value(target_sheet, 'E6', cliente_value)
                 self._set_cell_value(target_sheet, 'E8', fecha_value)
 
-                # H19 = "Número de golpes ensayo SPT" — mirror K14 from LABORATORIO
-                _lab_st = self._load_lab_state()
-                _h19 = _lab_st.get('n_golpes', 16) if _lab_st else 16
-                self._set_cell_value(target_sheet, 'H19', _h19)
+                # ── Auto-derivar parámetros de asentamiento (misma lógica que template 8) ──
 
-                # H24 (B - ancho/diámetro cimiento) y H25 (L - largo) desde capacidad_portante
+                # 1. Tipo de suelo desde clasificacion_suelo
+                _cls_up10 = (clasificacion_suelo or '').strip().upper()
+                _sandy_cls10 = {'SM', 'SP', 'SW', 'GW', 'GP', 'GM', 'GC', 'SC',
+                                 'SP-SM', 'SW-SM', 'SW-SC', 'SP-SC',
+                                 'GW-GM', 'GP-GM', 'GW-GC', 'GP-GC'}
+                _firm_clay10 = {'CL', 'CH', 'CL-ML', 'CL-CH'}
+                if _cls_up10 in _sandy_cls10:
+                    _tipo10 = 3
+                elif _cls_up10 in _firm_clay10:
+                    _tipo10 = 1
+                else:
+                    _tipo10 = 2  # arcilloso blando / default
+
+                # 2. Profundidad Df y dimensiones B/L según pisos (idéntico a template 8)
+                if pisos_int <= 1:
+                    _df10 = 1.0
+                elif pisos_int <= 3:
+                    _df10 = 1.5
+                elif pisos_int <= 6:
+                    _df10 = 2.0
+                else:
+                    _df10 = 2.5
+
+                if pisos_int <= 2:
+                    _b10 = _l10 = 1.0
+                elif pisos_int <= 5:
+                    _b10 = _l10 = 1.3
+                elif pisos_int <= 10:
+                    _b10 = _l10 = 1.5
+                else:
+                    _b10 = _l10 = 2.0
+
+                # 3. N° golpes SPT en la misma profundidad de Df (correlación geotécnica)
+                _pisos_cfg_10 = get_pisos_config(pisos_int)
+                _spt_seq_10 = get_spt_values(_pisos_cfg_10['template_id'], True)
+                _df_idx10 = max(0, int(_df10 - 0.45))
+                _n19_auto = int(_spt_seq_10[_df_idx10]) if _df_idx10 < len(_spt_seq_10) else 15
+
+                # 4. Carga aplicada qu según plantilla (300 kN ó 800 kN)
+                _qu = 300.0 if str(template_id) == '10' else 800.0
+
+                # 5. Módulo de elasticidad E según tipo de suelo + SPT
+                #    Correlaciones: Schultze-Melzer (arenas) / Terzaghi-Peck (arcillas)
+                _n_e = _n19_auto
+                if _tipo10 == 3:   # Arenoso
+                    _e_auto = min(60000, max(20000, 1500 * _n_e))
+                elif _tipo10 == 1:  # Arcilloso firme
+                    _e_auto = min(30000, max(10000, 800 * _n_e))
+                else:               # Arcilloso blando
+                    _e_auto = min(15000, max(5000, 600 * _n_e))
+
+                # 6. Override del usuario si existe capacidad_portante
                 _cp_as = capacidad_portante or {}
-                if _cp_as.get('ancho_b') is not None:
-                    self._set_cell_value(target_sheet, 'H24', float(_cp_as['ancho_b']))
-                if _cp_as.get('largo_l') is not None:
-                    self._set_cell_value(target_sheet, 'H25', float(_cp_as['largo_l']))
+                _n19 = int(_cp_as['n10']) if _cp_as.get('n10') is not None else _n19_auto
+                _b19 = float(_cp_as['ancho_b']) if _cp_as.get('ancho_b') is not None else _b10
+                _l19 = float(_cp_as['largo_l']) if _cp_as.get('largo_l') is not None else _l10
+
+                self._set_cell_value(target_sheet, 'H19', _n19)
+                self._set_cell_value(target_sheet, 'H20', _qu)
+                self._set_cell_value(target_sheet, 'H21', _e_auto)
+                self._set_cell_value(target_sheet, 'H24', round(_b19, 2))
+                self._set_cell_value(target_sheet, 'H25', round(_l19, 2))
 
                 wb_tmp.save(work_file)
                 wb_tmp.close()
@@ -1539,9 +1804,53 @@ class ExcelService:
                         _d = 0.0
                     _depth_vals.append(_d)
 
+                # P-1 → Lab 1 ('4'), P-2 → Lab 2 ('5'), P-3 → Lab 3 ('6'), P-4 → Lab 4 ('7')
+                # ALL lab data (w, LL, LP, IP, gamma, USCS) goes ONLY to the last layer row
+                # (the representative sample), matching the original template structure.
+                _p_to_lab = {'12': '4', '13': '5', '14': '6', '15': '7'}
+                _this_lab_id = _p_to_lab.get(str(template_id))
+
+                _n_layers = max(len(perforaciones or []), 7)
+                _lab_data_per_layer: List[Optional[dict]] = [None] * _n_layers
+
+                if _this_lab_id:
+                    _vl = (valores_laboratorio_por_lab or {}).get(_this_lab_id) or valores_laboratorio
+                    _cls = (clasificaciones_por_lab or {}).get(_this_lab_id) or clasificacion_suelo
+                    _ll = _lp = _hum = None
+                    try:
+                        _ll = float(_vl['limite_liquido']) if _vl and _vl.get('limite_liquido') is not None else None
+                    except (ValueError, TypeError):
+                        pass
+                    try:
+                        _lp = float(_vl['limite_plastico']) if _vl and _vl.get('limite_plastico') is not None else None
+                    except (ValueError, TypeError):
+                        pass
+                    try:
+                        _hum = float(_vl['humedad']) if _vl and _vl.get('humedad') is not None else None
+                    except (ValueError, TypeError):
+                        pass
+                    _ip = round(_ll - _lp, 2) if _ll is not None and _lp is not None else None
+                    _last_idx = max(0, len(perforaciones or []) - 1)
+                    _gam_last = None
+                    if perforaciones and _last_idx < len(perforaciones):
+                        try:
+                            _gam_last = float(perforaciones[_last_idx].get('gamma') or 0) or None
+                        except (ValueError, TypeError):
+                            pass
+                    if _last_idx < _n_layers:
+                        _lab_data_per_layer[_last_idx] = {
+                            'humedad': _hum,
+                            'limite_liquido': _ll,
+                            'limite_plastico': _lp,
+                            'indice_plasticidad': _ip,
+                            'gamma': _gam_last,
+                            'clasificacion_uscs': _cls,
+                        }
+
                 # All legacy .xls templates (P-1 through P-4) use the same dynamic
                 # depth scale expansion and proportional column I color logic.
                 _expand_levels = _pisos_cfg["expand_levels"]
+                _municipio_val = str(data.get('municipio_word') or '').strip().upper() or None
                 self._fill_legacy_xls_template(
                     work_file, project_value, fecha_value, e5_value, n_campo_values,
                     soil_descriptions=_soil_descs if _soil_descs else None,
@@ -1549,6 +1858,8 @@ class ExcelService:
                     depth_values=_depth_vals if _depth_vals else None,
                     expand_depth_levels=_expand_levels,
                     photo_paths=photo_paths,
+                    lab_data_per_layer=_lab_data_per_layer if any(x is not None for x in _lab_data_per_layer) else None,
+                    municipio=_municipio_val,
                 )
             except Exception:
                 try:
